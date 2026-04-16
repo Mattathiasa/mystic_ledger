@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mystic Ledger - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:ital,wght@0,400;0,500;0,700;0,900;1,400;1,700;1,900&amp;family=Manrope:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"tertiary-container": "#ff968f", "surface-container": "#efefd7", outline: "#7f7663", "on-surface": "#1b1d0e", "secondary-fixed-dim": "#a1d488", "on-background": "#1b1d0e", "secondary-container": "#bcf1a1", "on-primary-fixed-variant": "#574500", primary: "#735c00", "surface-container-low": "#f5f5dc", "primary-container": "#d4af37", "secondary-fixed": "#bcf1a1", "tertiary-fixed": "#ffdad7", "surface-dim": "#dbdcc3", "surface-container-highest": "#e4e4cc", background: "#fbfbe2", "on-tertiary-fixed-variant": "#8c171b", "surface-container-high": "#eaead1", "on-secondary-fixed": "#052100", "on-primary-container": "#554300", "on-primary": "#ffffff", error: "#ba1a1a", "surface-bright": "#fbfbe2", "tertiary-fixed-dim": "#ffb3ad", "on-surface-variant": "#4d4635", "inverse-surface": "#303221", tertiary: "#ad302f", "surface-tint": "#735c00", "on-tertiary-fixed": "#410004", "error-container": "#ffdad6", "inverse-primary": "#e9c349", "on-secondary": "#ffffff", "on-error-container": "#93000a", "surface-variant": "#e4e4cc", "on-secondary-fixed-variant": "#255013", "primary-fixed-dim": "#e9c349", "inverse-on-surface": "#f2f2d9", "on-tertiary-container": "#8a1519", "on-secondary-container": "#426f2f", surface: "#fbfbe2", secondary: "#3c6929", "on-error": "#ffffff", "on-primary-fixed": "#241a00", "on-tertiary": "#ffffff", "primary-fixed": "#ffe088", "outline-variant": "#d0c5af", "surface-container-lowest": "#ffffff"}, borderRadius: {DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem"}, fontFamily: {headline: ["Epilogue"], body: ["Manrope"], label: ["Space Grotesk"], display: "Epilogue"}}}};</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .scribble-highlight {
+            background: linear-gradient(120deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.4) 100%);
+            border-radius: 20% 5% 20% 5% / 5% 20% 5% 20%;
+        }
+        .squircle-fab {
+            border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+        }
+        .paper-stack-1 { transform: rotate(-1deg) translateY(0); }
+        .paper-stack-2 { transform: rotate(0.5deg) translateY(-8px); }
+        .paper-stack-3 { transform: rotate(-0.5deg) translateY(-16px); }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="bg-stone-50 dark:bg-stone-950 border-b-[1.5px] border-stone-300 dark:border-stone-800 w-full top-0 px-4 pt-4 flex justify-between items-center h-16 sticky z-40">
+<div class="flex items-center gap-3">
+<button class="hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition-colors p-2 rounded-xl">
+<span class="material-symbols-outlined text-yellow-700 dark:text-yellow-500">menu</span>
+</button>
+<h1 class="font-['Epilogue'] font-bold text-stone-900 dark:text-stone-100 text-2xl italic tracking-tighter">Mystic Ledger</h1>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/30 active:rotate-1 transition-transform duration-150">
+<img alt="The Archivist" data-alt="A textured, hand-drawn style charcoal sketch portrait of a mystical archivist in a hood with gold accents" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCX5CXD89ZEAGlPlaQlq8DiPJKbhdEJwfygXr_ZKfb7r5oF4l2S9JnyHvJU-Br6IlDA7dUA-73bro4L44ugNYw1LPIEQclh9l68dm7AgUO2xXESVvG23fmssCkTPgL7m90CRvrW3ZfTtGUQgLlVxhe-FSPUB_mp3aruME7xOJj0diue4g_zyrt79gbkFBFjIQudUg6MbkEl96SrsY17i4GIqQ49E26VYbEoifhZ7e2N-APA0qVHK0q0ytQocQ0D9DbcO2q3qRJx7B0"/>
+</div>
+</header>
+<main class="max-w-5xl mx-auto px-6 pt-10 pb-32">
+<!-- Hero Section: Total Balance -->
+<section class="mb-16">
+<div class="inline-block mb-2">
+<span class="font-label text-xs uppercase tracking-widest text-on-surface-variant opacity-70">Current Observations</span>
+</div>
+<h2 class="font-headline text-5xl md:text-7xl font-black italic tracking-tight mb-4">My Ledger</h2>
+<div class="relative inline-block py-2 px-6">
+<div class="absolute inset-0 scribble-highlight -z-10 rotate-1 scale-110"></div>
+<p class="font-body text-4xl md:text-6xl font-bold tabular-nums">
+<span class="text-primary opacity-60 mr-2">$</span>14,208.52
+                </p>
+</div>
+<p class="mt-6 font-body text-on-surface-variant max-w-md italic border-l-2 border-primary-container pl-4">
+                "The wealth of the 14th Moon shows steady accumulation. Gold leaf flows through the Telebirr artery."
+            </p>
+</section>
+<!-- Account Cards: Bento-ish Grid -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+<!-- Card 1: Telebirr -->
+<div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/15 shadow-sm hover:translate-x-1 transition-transform rotate-[-0.5deg]">
+<div class="flex justify-between items-start mb-8">
+<div class="bg-primary-container/20 p-3 rounded-xl rotate-3">
+<span class="material-symbols-outlined text-primary" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<span class="font-label text-[10px] uppercase tracking-tighter bg-on-surface/5 px-2 py-1 rounded">Digital Vault</span>
+</div>
+<h3 class="font-headline font-bold text-xl mb-1">Telebirr</h3>
+<p class="font-body text-2xl font-bold text-primary tabular-nums">$ 8,430.00</p>
+<div class="mt-4 h-[1px] bg-outline-variant/20 w-full"></div>
+<p class="mt-2 font-label text-[10px] text-on-surface-variant uppercase tracking-widest">Growth: +12%</p>
+</div>
+<!-- Card 2: Bank -->
+<div class="bg-surface-container-high p-6 rounded-2xl border border-outline-variant/15 shadow-sm hover:translate-x-1 transition-transform rotate-[0.8deg]">
+<div class="flex justify-between items-start mb-8">
+<div class="bg-secondary-container/20 p-3 rounded-xl -rotate-2">
+<span class="material-symbols-outlined text-secondary" data-icon="account_balance">account_balance</span>
+</div>
+<span class="font-label text-[10px] uppercase tracking-tighter bg-on-surface/5 px-2 py-1 rounded">Institutional</span>
+</div>
+<h3 class="font-headline font-bold text-xl mb-1">Bank Account</h3>
+<p class="font-body text-2xl font-bold text-on-surface tabular-nums">$ 5,210.52</p>
+<div class="mt-4 h-[1px] bg-outline-variant/20 w-full"></div>
+<p class="mt-2 font-label text-[10px] text-on-surface-variant uppercase tracking-widest">Verified: Just now</p>
+</div>
+<!-- Card 3: Cash -->
+<div class="bg-surface-container p-6 rounded-2xl border border-outline-variant/15 shadow-sm hover:translate-x-1 transition-transform rotate-[-0.3deg]">
+<div class="flex justify-between items-start mb-8">
+<div class="bg-tertiary-container/20 p-3 rounded-xl rotate-1">
+<span class="material-symbols-outlined text-tertiary" data-icon="payments">payments</span>
+</div>
+<span class="font-label text-[10px] uppercase tracking-tighter bg-on-surface/5 px-2 py-1 rounded">Physical</span>
+</div>
+<h3 class="font-headline font-bold text-xl mb-1">Cash On Hand</h3>
+<p class="font-body text-2xl font-bold text-on-surface tabular-nums">$ 568.00</p>
+<div class="mt-4 h-[1px] bg-outline-variant/20 w-full"></div>
+<p class="mt-2 font-label text-[10px] text-on-surface-variant uppercase tracking-widest">Last Sync: 2d ago</p>
+</div>
+</section>
+<!-- Recent Entries: Stacked Paper Effect -->
+<section class="mb-20">
+<div class="flex justify-between items-end mb-8">
+<h2 class="font-headline text-3xl font-bold italic">Recent Entries</h2>
+<button class="font-label text-xs uppercase tracking-widest text-primary border-b border-primary/30 pb-1">View Archives</button>
+</div>
+<div class="space-y-6 relative">
+<!-- Entry 1 -->
+<div class="bg-surface-container-highest p-5 rounded-xl border border-outline-variant/10 shadow-sm flex items-center justify-between group cursor-pointer hover:bg-surface-bright transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 flex items-center justify-center bg-white/50 rounded-lg group-hover:-rotate-3 transition-transform">
+<span class="material-symbols-outlined text-tertiary" data-icon="restaurant">restaurant</span>
+</div>
+<div>
+<p class="font-headline font-bold text-lg">Mystic Feast Tavern</p>
+<p class="font-label text-[10px] text-on-surface-variant uppercase">3:42 PM • Food &amp; Drink</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-body font-bold text-tertiary">-$ 42.50</p>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest">Cash</p>
+</div>
+</div>
+<!-- Entry 2 -->
+<div class="bg-surface-container-low p-5 rounded-xl border border-outline-variant/10 shadow-sm flex items-center justify-between group cursor-pointer hover:bg-surface-bright transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 flex items-center justify-center bg-white/50 rounded-lg group-hover:rotate-3 transition-transform">
+<span class="material-symbols-outlined text-secondary" data-icon="mintmark">mintmark</span>
+</div>
+<div>
+<p class="font-headline font-bold text-lg">Grimoire Sales</p>
+<p class="font-label text-[10px] text-on-surface-variant uppercase">Yesterday • Income</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-body font-bold text-secondary">+$ 850.00</p>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest">Telebirr</p>
+</div>
+</div>
+<!-- Entry 3 -->
+<div class="bg-surface-container-highest p-5 rounded-xl border border-outline-variant/10 shadow-sm flex items-center justify-between group cursor-pointer hover:bg-surface-bright transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 flex items-center justify-center bg-white/50 rounded-lg group-hover:-rotate-1 transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="commute">commute</span>
+</div>
+<div>
+<p class="font-headline font-bold text-lg">Carriage Service</p>
+<p class="font-label text-[10px] text-on-surface-variant uppercase">Oct 14 • Transport</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-body font-bold text-tertiary">-$ 18.20</p>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest">Bank Account</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- FAB: Floating Action Button -->
+<button class="fixed bottom-28 right-6 squircle-fab bg-primary text-on-primary p-5 shadow-2xl flex items-center gap-2 hover:scale-105 active:scale-95 transition-all z-50">
+<span class="material-symbols-outlined font-bold" data-icon="add">add</span>
+<span class="font-label text-xs uppercase font-bold tracking-widest pr-2">Add Entry</span>
+</button>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-stone-100 dark:bg-stone-900 rounded-t-[2rem] border-t border-stone-200 dark:border-stone-800 shadow-[0_-8px_40px_rgba(27,29,14,0.06)]">
+<a class="flex flex-col items-center justify-center bg-yellow-200/50 dark:bg-yellow-900/30 text-yellow-900 dark:text-yellow-100 rounded-xl p-2 -rotate-1 scale-95 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="book_2" style="font-variation-settings: 'FILL' 1;">book_2</span>
+<span class="font-['Space_Grotesk'] text-[11px] uppercase tracking-widest mt-1">Journal</span>
+</a>
+<a class="flex flex-col items-center justify-center text-stone-500 dark:text-stone-400 p-2 hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="edit_note">edit_note</span>
+<span class="font-['Space_Grotesk'] text-[11px] uppercase tracking-widest mt-1">Ledger</span>
+</a>
+<a class="flex flex-col items-center justify-center text-stone-500 dark:text-stone-400 p-2 hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-['Space_Grotesk'] text-[11px] uppercase tracking-widest mt-1">Giving</span>
+</a>
+<a class="flex flex-col items-center justify-center text-stone-500 dark:text-stone-400 p-2 hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-['Space_Grotesk'] text-[11px] uppercase tracking-widest mt-1">Insights</span>
+</a>
+</nav>
+</body></html>
