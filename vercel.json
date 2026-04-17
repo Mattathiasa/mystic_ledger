@@ -1,0 +1,6 @@
+{
+  "rootDirectory": "landing_page",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite"
+}
