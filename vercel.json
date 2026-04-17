@@ -1,6 +1,6 @@
 {
-  "rootDirectory": "landing_page",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "framework": "vite"
+  "installCommand": "cd landing_page && npm install",
+  "buildCommand": "cd landing_page && npm run build",
+  "outputDirectory": "landing_page/dist",
+  "framework": null
 }
