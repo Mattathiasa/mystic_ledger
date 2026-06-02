@@ -1,35 +1,549 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mystic Ledger — Master Your Wealth</title>
+  <meta name="description" content="Track spending, manage accounts, and gain clarity over your money. Download Mystic Ledger for Android." />
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Mattathiasa/mystic_ledger/main/web/favicon.png" />
 
-    <!-- Primary meta -->
-    <title>Mystic Ledger — Track Your Money Like a Story</title>
-    <meta name="description" content="Mystic Ledger is a personal finance app for Ethiopian Birr (ETB). Track accounts, log transactions, auto-calculate your tithe, and watch your wealth grow — one entry at a time." />
-    <meta name="theme-color" content="#735c00" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Epilogue:ital,wght@0,400;0,700;0,900;1,400;1,900&family=Manrope:wght@400;600&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-    <!-- Open Graph -->
-    <meta property="og:type"        content="website" />
-    <meta property="og:title"       content="Mystic Ledger — Track Your Money Like a Story" />
-    <meta property="og:description" content="A personal finance app built for those who treat money like a story. Track, give, save, and grow — one entry at a time." />
-    <meta property="og:url"         content="https://mattathiasa.github.io/mystic_ledger/" />
-    <meta property="og:site_name"   content="Mystic Ledger" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    <!-- Twitter card -->
-    <meta name="twitter:card"        content="summary" />
-    <meta name="twitter:title"       content="Mystic Ledger — Track Your Money Like a Story" />
-    <meta name="twitter:description" content="A personal finance app built for those who treat money like a story. Track, give, save, and grow — one entry at a time." />
+    :root {
+      --gold: #d4af37;
+      --gold-light: #e9c349;
+      --bg: #0e0e08;
+      --bg-card: #1a1a10;
+      --text: #f0edcf;
+      --text-muted: #9e9678;
+      --border: rgba(212,175,55,0.18);
+      --stone: #292920;
+    }
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;700;800;900&family=Manrope:wght@400;500;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Manrope', sans-serif;
+      overflow-x: hidden;
+    }
+
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      vertical-align: middle;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      background-size: 150px;
+      pointer-events: none; z-index: 0;
+    }
+
+    .bg-glow {
+      position: fixed;
+      width: 700px; height: 700px;
+      background: radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 65%);
+      top: -200px; left: 50%;
+      transform: translateX(-50%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.9rem 1.5rem;
+      background: rgba(14,14,8,0.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-family: 'Epilogue', serif;
+      font-weight: 900; font-style: italic;
+      font-size: 1.1rem;
+      color: var(--gold-light);
+      text-decoration: none;
+    }
+    .nav-brand .material-symbols-outlined { font-size: 1.2rem; color: var(--gold); }
+    .nav-cta {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.45rem 0.9rem;
+      background: var(--gold);
+      color: #0e0e08;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 500; font-size: 0.75rem;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+      white-space: nowrap;
+    }
+    .nav-cta:hover { background: var(--gold-light); transform: translateY(-1px); }
+    .nav-cta .material-symbols-outlined { font-size: 0.95rem; }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative; z-index: 1;
+      min-height: 100svh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 6rem 1.25rem 3rem;
+      gap: 0;
+    }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.3rem 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--gold);
+      background: rgba(212,175,55,0.06);
+      margin-bottom: 1.25rem;
+    }
+    .hero-badge .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--gold);
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.25; } }
+
+    .hero h1 {
+      font-family: 'Epilogue', serif;
+      font-weight: 900; font-style: italic;
+      font-size: clamp(2.6rem, 11vw, 6rem);
+      line-height: 0.9;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+    .hero h1 span { color: var(--gold-light); }
+
+    .hero p {
+      max-width: 480px;
+      font-size: clamp(0.875rem, 2.5vw, 1rem);
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin-bottom: 2rem;
+      padding: 0 0.25rem;
+    }
+
+    .hero-actions {
+      display: flex; flex-direction: column;
+      gap: 0.75rem;
+      width: 100%; max-width: 320px;
+      margin-bottom: 1.5rem;
+    }
+
+    .btn-download {
+      display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+      padding: 0.875rem 1.5rem;
+      background: var(--gold);
+      color: #0a0a05;
+      font-family: 'Epilogue', serif;
+      font-weight: 700; font-size: 0.975rem;
+      border-radius: 10px;
+      text-decoration: none;
+      box-shadow: 0 0 36px rgba(212,175,55,0.22);
+      transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+      position: relative;
+    }
+    .btn-download::before {
+      content: '';
+      position: absolute; inset: -1px;
+      border-radius: 11px;
+      border: 1px solid rgba(212,175,55,0.45);
+      pointer-events: none;
+    }
+    .btn-download:hover { background: var(--gold-light); box-shadow: 0 0 52px rgba(212,175,55,0.38); transform: translateY(-2px); }
+    .btn-download:active { transform: scale(0.97); }
+    .btn-download .material-symbols-outlined { font-size: 1.1rem; }
+
+    .btn-secondary {
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      padding: 0.875rem 1.5rem;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.875rem;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--gold); color: var(--gold-light); }
+    .btn-secondary .material-symbols-outlined { font-size: 1rem; }
+
+    /* download state text inside btn */
+    .btn-download .btn-label { pointer-events: none; }
+
+    .hero-meta {
+      display: flex; align-items: center; gap: 0.75rem;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--text-muted);
+      margin-bottom: 2.5rem;
+    }
+    .hero-meta .sep { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); opacity: 0.35; }
+
+    /* ── JOURNAL (hidden on small mobile) ── */
+    .journal-wrap {
+      position: relative;
+      width: min(240px, 65vw);
+      margin: 0 auto;
+    }
+    .journal-shadow {
+      position: absolute; inset: 0;
+      background: var(--stone);
+      border-radius: 12px;
+      transform: translate(5px, 5px);
+      box-shadow: 0 16px 50px rgba(0,0,0,0.55);
+    }
+    .journal {
+      position: relative;
+      background: #1c1c12;
+      border-radius: 12px;
+      border-left: 10px solid #0a0a06;
+      padding: 1.75rem;
+      display: flex; flex-direction: column; align-items: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .journal-eye {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 1px solid rgba(212,175,55,0.2);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .journal-eye .material-symbols-outlined { font-size: 2.4rem; color: var(--gold-light); }
+    .journal-eye::after {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 1px solid rgba(212,175,55,0.1);
+      transform: scale(1.15) rotate(-12deg);
+      animation: spin 20s linear infinite;
+    }
+    @keyframes spin { to { transform: scale(1.15) rotate(348deg); } }
+    .journal-lines {
+      margin-top: 1.1rem;
+      display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+    }
+    .journal-lines span {
+      display: block; background: rgba(212,175,55,0.22);
+      border-radius: 2px; height: 2px;
+    }
+    .journal-lines span:nth-child(1) { width: 52px; }
+    .journal-lines span:nth-child(2) { width: 28px; }
+
+    /* ── FEATURES ── */
+    .section {
+      position: relative; z-index: 1;
+      padding: 3.5rem 1.25rem;
+    }
+    .section-label {
+      text-align: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 0.6rem;
+    }
+    .section-title {
+      text-align: center;
+      font-family: 'Epilogue', serif;
+      font-weight: 900; font-style: italic;
+      font-size: clamp(1.6rem, 5vw, 2.6rem);
+      color: var(--text);
+      margin-bottom: 2.25rem;
+      line-height: 1.15;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.875rem;
+      max-width: 960px; margin: 0 auto;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .feature-card:hover { border-color: rgba(212,175,55,0.38); transform: translateY(-2px); }
+    .feature-icon {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      background: rgba(212,175,55,0.1);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 0.75rem;
+    }
+    .feature-icon .material-symbols-outlined { font-size: 1.15rem; color: var(--gold); }
+    .feature-card h3 {
+      font-family: 'Epilogue', serif;
+      font-weight: 700; font-size: 0.9rem;
+      color: var(--text); margin-bottom: 0.35rem;
+    }
+    .feature-card p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* ── CTA ── */
+    .cta-section {
+      position: relative; z-index: 1;
+      padding: 3rem 1.25rem 4rem;
+      text-align: center;
+    }
+    .cta-inner {
+      max-width: 540px; margin: 0 auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 2.5rem 1.5rem;
+      position: relative; overflow: hidden;
+    }
+    .cta-inner::before {
+      content: '';
+      position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
+      width: 280px; height: 180px;
+      background: radial-gradient(circle, rgba(212,175,55,0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cta-inner h2 {
+      font-family: 'Epilogue', serif;
+      font-weight: 900; font-style: italic;
+      font-size: clamp(1.6rem, 5vw, 2.2rem);
+      color: var(--text); margin-bottom: 0.6rem;
+    }
+    .cta-inner p {
+      color: var(--text-muted);
+      font-size: 0.875rem; line-height: 1.65;
+      margin-bottom: 1.75rem;
+    }
+    .cta-btn-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    }
+    .cta-btn-wrap .btn-download { width: 100%; max-width: 280px; }
+    .apk-info {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.65rem; letter-spacing: 0.08em;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 0.7rem;
+      flex-wrap: wrap; justify-content: center;
+    }
+    .apk-info .material-symbols-outlined { font-size: 0.85rem; color: var(--gold); }
+
+    /* ── DIVIDER ── */
+    .rune-divider {
+      display: flex; align-items: center; gap: 0.75rem;
+      max-width: 300px; margin: 0 auto 3rem;
+      opacity: 0.25;
+    }
+    .rune-divider .line { flex: 1; height: 1px; background: var(--border); }
+    .rune-divider .material-symbols-outlined { font-size: 0.85rem; color: var(--gold); }
+
+    /* ── FOOTER ── */
+    footer {
+      position: relative; z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 1.5rem 1.25rem;
+      text-align: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+    }
+    footer a { color: var(--gold); text-decoration: none; }
+    footer a:hover { color: var(--gold-light); }
+
+    /* ── RESPONSIVE ── */
+
+    /* Tablet and up — side-by-side buttons, wider grid */
+    @media (min-width: 640px) {
+      .hero { padding: 7rem 2rem 4rem; }
+      .hero-actions {
+        flex-direction: row;
+        width: auto; max-width: none;
+      }
+      .btn-download, .btn-secondary { width: auto; }
+      .features-grid { grid-template-columns: repeat(3, 1fr); }
+      .section { padding: 4.5rem 2rem; }
+      .cta-inner { padding: 3rem 2.5rem; }
+    }
+
+    @media (min-width: 1024px) {
+      .features-grid { grid-template-columns: repeat(3, 1fr); max-width: 960px; }
+    }
+
+    /* Small phones — single column features, hide journal */
+    @media (max-width: 400px) {
+      .hero h1 { font-size: 2.4rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .journal-wrap { display: none; }
+      .hero { padding-bottom: 2rem; }
+      .feature-card { padding: 1rem; }
+      .nav-brand { font-size: 1rem; }
+      .nav-cta span:not(.material-symbols-outlined) { display: none; }
+      .nav-cta { padding: 0.45rem 0.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-brand">
+    <span class="material-symbols-outlined">auto_awesome</span>
+    Mystic Ledger
+  </a>
+  <a href="#" class="nav-cta js-dl-btn">
+    <span class="material-symbols-outlined">download</span>
+    <span>Download APK</span>
+  </a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="dot"></span>
+    Now Available — Android
+  </div>
+
+  <h1>Master Your<br /><span>Wealth.</span></h1>
+
+  <p>
+    Mystic Ledger is your personal finance companion — track every transaction,
+    manage accounts, and read the story of your money.
+  </p>
+
+  <div class="hero-actions">
+    <a href="#" class="btn-download js-dl-btn">
+      <span class="material-symbols-outlined">android</span>
+      <span class="btn-label">Download for Android</span>
+    </a>
+    <a href="https://github.com/Mattathiasa/mystic_ledger/releases"
+       class="btn-secondary" target="_blank" rel="noopener">
+      <span class="material-symbols-outlined">history</span>
+      Release Notes
+    </a>
+  </div>
+
+  <div class="hero-meta">
+    <span>Free</span><span class="sep"></span>
+    <span>No Ads</span><span class="sep"></span>
+    <span>Open Source</span>
+  </div>
+
+  <div class="journal-wrap">
+    <div class="journal-shadow"></div>
+    <div class="journal">
+      <div class="journal-eye">
+        <span class="material-symbols-outlined">auto_awesome</span>
+      </div>
+      <div class="journal-lines">
+        <span></span><span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section">
+  <p class="section-label">The Grimoire's Powers</p>
+  <h2 class="section-title">Everything you need to<br />command your finances</h2>
+
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon"><span class="material-symbols-outlined">account_balance_wallet</span></div>
+      <h3>Multi-Account Ledger</h3>
+      <p>Track checking, savings, cash, and credit accounts in one unified ledger.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><span class="material-symbols-outlined">history_edu</span></div>
+      <h3>Detailed Journal</h3>
+      <p>Log every transaction with categories, notes, and tags.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><span class="material-symbols-outlined">bar_chart</span></div>
+      <h3>Insights & Budgets</h3>
+      <p>Visual spending breakdowns and monthly budgets to protect your goals.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><span class="material-symbols-outlined">savings</span></div>
+      <h3>Savings Goals</h3>
+      <p>Set targets and track progress toward what matters most.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><span class="material-symbols-outlined">volunteer_activism</span></div>
+      <h3>Giving Tracker</h3>
+      <p>Log tithes, donations, and generosity with intention.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><span class="material-symbols-outlined">credit_card_off</span></div>
+      <h3>Debt Payoff</h3>
+      <p>Map your debts and watch balances fall with every payment logged.</p>
+    </div>
+  </div>
+</section>
+
+<div class="rune-divider">
+  <span class="line"></span>
+  <span class="material-symbols-outlined">flare</span>
+  <span class="line"></span>
+</div>
+
+<!-- DOWNLOAD CTA -->
+<section class="cta-section">
+  <div class="cta-inner">
+    <h2>Open the Journal</h2>
+    <p>Download Mystic Ledger and begin writing the story of your financial life. Free forever. No subscriptions.</p>
+    <div class="cta-btn-wrap">
+      <a href="#" class="btn-download js-dl-btn">
+        <span class="material-symbols-outlined">download</span>
+        <span class="btn-label">Download Latest APK</span>
+      </a>
+      <span class="apk-info">
+        <span class="material-symbols-outlined">verified</span>
+        Direct APK &nbsp;·&nbsp; GitHub Releases &nbsp;·&nbsp; Android 5.0+
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>
+    &copy; 2026 Mystic Ledger &nbsp;·&nbsp;
+    <a href="https://github.com/Mattathiasa/mystic_ledger" target="_blank" rel="noopener">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/Mattathiasa/mystic_ledger/releases" target="_blank" rel="noopener">All Releases</a>
+  </p>
+</footer>
+
+<script>
+  const APK_URL = 'https://github.com/Mattathiasa/mystic_ledger/releases/download/v1.0.0/app-release.apk';
+  const RELEASES_PAGE = 'https://github.com/Mattathiasa/mystic_ledger/releases';
+
+  document.querySelectorAll('.js-dl-btn').forEach(btn => {
+    btn.href = APK_URL;
+    btn.setAttribute('download', 'MysticLedger-v1.0.0.apk');
+  });
+</script>
+
+</body>
 </html>

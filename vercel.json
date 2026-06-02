@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "outputDirectory": "landing_page",
+  "builds": [
+    {
+      "src": "landing_page/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/landing_page/$1"
+    }
+  ]
+}
