@@ -5,11 +5,13 @@ import '../widgets/app_theme.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
+import '../models/currency_model.dart';
 import 'transfer_screen.dart';
 import 'savings_screen.dart';
 import 'debt_screen.dart';
 import 'add_account_screen.dart';
 import 'budget_screen.dart';
+import 'transfer_history_screen.dart';
 
 /// Tab 5 — Finance Hub.
 /// Central gateway to Transfers, Savings, Debts, and Account management.
@@ -109,16 +111,36 @@ class FinanceHubScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _ActionTile(
-                  icon: Icons.assignment_outlined,
-                  label: 'Budgets',
-                  subtitle: 'Set spending limits',
-                  color: MysticColors.secondary,
-                  bgColor: MysticColors.surfaceContainerHigh,
-                  rotation: 0.004,
-                  onTap: () => Navigator.of(context).push(
-                    _slide(const BudgetScreen()),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ActionTile(
+                        icon: Icons.assignment_outlined,
+                        label: 'Budgets',
+                        subtitle: 'Set spending limits',
+                        color: MysticColors.secondary,
+                        bgColor: MysticColors.surfaceContainerHigh,
+                        rotation: 0.004,
+                        onTap: () => Navigator.of(context).push(
+                          _slide(const BudgetScreen()),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ActionTile(
+                        icon: Icons.history,
+                        label: 'Transfer Record',
+                        subtitle: 'History & reverse',
+                        color: MysticColors.tertiary,
+                        bgColor: MysticColors.surfaceContainer,
+                        rotation: -0.006,
+                        onTap: () => Navigator.of(context).push(
+                          _slide(const TransferHistoryScreen()),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 40),
@@ -126,6 +148,7 @@ class FinanceHubScreen extends StatelessWidget {
                 // ── Savings snapshot ────────────────────────────────────
                 _SavingsSnapshot(
                   total: svc.totalSavings,
+                  currency: svc.currencyOf(FinanceService.idSavings),
                   fmt: fmt,
                   onTap: () => Navigator.of(context)
                       .push(_slide(const SavingsScreen())),
@@ -157,6 +180,7 @@ class FinanceHubScreen extends StatelessWidget {
 
                 // ── Debt snapshot ───────────────────────────────────────
                 _DebtSnapshot(
+                  currency: svc.baseCurrency,
                   iOweCount: svc.iOwe.length,
                   owedToMeCount: svc.owedToMe.length,
                   iOweTotal:
@@ -264,11 +288,13 @@ class _ActionTile extends StatelessWidget {
 
 class _SavingsSnapshot extends StatelessWidget {
   final double total;
+  final String currency;
   final NumberFormat fmt;
   final VoidCallback onTap;
 
   const _SavingsSnapshot({
     required this.total,
+    required this.currency,
     required this.fmt,
     required this.onTap,
   });
@@ -304,7 +330,7 @@ class _SavingsSnapshot extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'ETB ${fmt.format(total)}',
+                    '$currency ${fmt.format(total)}',
                     style: headlineStyle(32,
                         italic: false,
                         weight: FontWeight.w900,
@@ -319,9 +345,9 @@ class _SavingsSnapshot extends StatelessWidget {
                 ],
               ),
             ),
-            Opacity(
+            const Opacity(
               opacity: 0.2,
-              child: const Icon(Icons.savings,
+              child: Icon(Icons.savings,
                   size: 72, color: Colors.white),
             ),
           ],
@@ -416,20 +442,21 @@ class _AccountsList extends StatelessWidget {
                               ],
                             ),
                           ),
-                          Text('ETB ${fmt.format(bal)}',
+                          Text('${acc.currency} ${fmt.format(bal)}',
                               style: bodyStyle(14,
                                   weight: FontWeight.w700, color: color)),
-                          const SizedBox(width: 8),
-                          // Remove button (savings vault cannot be removed)
-                          if (acc.type != AccountType.savings)
-                            GestureDetector(
-                              onTap: () =>
-                                  _confirmRemove(context, svc, acc.id, acc.name),
-                              child: Icon(Icons.hide_source_outlined,
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _showEditSheet(context, svc, acc),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(Icons.more_horiz,
                                   size: 18,
                                   color: MysticColors.onSurfaceVariant
-                                      .withOpacity(0.4)),
+                                      .withOpacity(0.5)),
                             ),
+                          ),
                         ],
                       ),
                     );
@@ -518,41 +545,256 @@ class _AccountsList extends StatelessWidget {
     );
   }
 
-  void _confirmRemove(
-      BuildContext context, FinanceService svc, String id, String name) {
-    showDialog<bool>(
+  void _showEditSheet(BuildContext context, FinanceService svc, Account acc) {
+    showModalBottomSheet(
       context: context,
-      builder: (_) => AlertDialog(
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _AccountEditSheet(svc: svc, account: acc),
+    );
+  }
+
+}
+
+// ── Account edit sheet ────────────────────────────────────────────────────────
+
+/// Rename an account, change its currency, or remove it.
+///
+/// Removing is a soft-delete: the account disappears from the home screen and
+/// pickers but its history is preserved and it can be restored. This is how a
+/// user without Telebirr (or without a bank, or without cash) gets rid of the
+/// default accounts they don't use.
+class _AccountEditSheet extends StatefulWidget {
+  final FinanceService svc;
+  final Account account;
+  const _AccountEditSheet({required this.svc, required this.account});
+
+  @override
+  State<_AccountEditSheet> createState() => _AccountEditSheetState();
+}
+
+class _AccountEditSheetState extends State<_AccountEditSheet> {
+  late final TextEditingController _nameCtrl;
+  late String _currency;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.account.name);
+    _currency = widget.account.currency;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final acc      = widget.account;
+    final svc      = widget.svc;
+    final locked   = svc.accountHasActivity(acc.id);
+    final isSavings = acc.type == AccountType.savings;
+    final bottom   = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 28, 24, 24 + bottom),
+      decoration: const BoxDecoration(
+        color: Color(0xFFFDFCF0),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: MysticColors.outlineVariant.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text('Edit Account',
+              style: headlineStyle(26, italic: true, weight: FontWeight.w900)),
+          const SizedBox(height: 24),
+
+          Text('NAME',
+              style: labelStyle(10,
+                  letterSpacing: 1.5,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nameCtrl,
+            textCapitalization: TextCapitalization.words,
+            style: bodyStyle(16, weight: FontWeight.w600),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: MysticColors.surfaceContainerLow,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+          Text('CURRENCY',
+              style: labelStyle(10,
+                  letterSpacing: 1.5,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _currency,
+            // Existing amounts are stored in this currency; switching now
+            // would silently reinterpret every one of them.
+            onChanged: locked
+                ? null
+                : (v) => setState(() => _currency = v ?? _currency),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: MysticColors.surfaceContainerLow
+                  .withOpacity(locked ? 0.5 : 1),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            style: bodyStyle(16, weight: FontWeight.w600),
+            dropdownColor: MysticColors.surfaceContainerLow,
+            items: Currency.registry
+                .map((c) => DropdownMenuItem(
+                      value: c.code,
+                      child: Text('${c.code} · ${c.name}'),
+                    ))
+                .toList(),
+          ),
+          if (locked) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Currency is locked — this account already has entries recorded '
+              'in $_currency. Create a new account for a different currency.',
+              style: labelStyle(10,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
+            ),
+          ],
+
+          const SizedBox(height: 28),
+          ElevatedButton(
+            onPressed: _save,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MysticColors.primary,
+              foregroundColor: MysticColors.onPrimary,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+            child: Text('Save Changes',
+                style: headlineStyle(16,
+                    italic: false,
+                    weight: FontWeight.w700,
+                    color: MysticColors.onPrimary)),
+          ),
+
+          // The savings vault is structural — other screens address it by id.
+          if (!isSavings) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _confirmRemove,
+              child: Text('Remove this account',
+                  style: bodyStyle(13, color: MysticColors.tertiary)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    final svc       = widget.svc;
+    final acc       = widget.account;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final name      = _nameCtrl.text.trim();
+
+    if (name.isNotEmpty && name != acc.name) {
+      await svc.renameAccount(acc.id, name);
+    }
+    if (_currency != acc.currency) {
+      try {
+        await svc.changeAccountCurrency(acc.id, _currency);
+      } on StateError catch (e) {
+        messenger.showSnackBar(_snack(e.message, MysticColors.tertiary));
+        return;
+      }
+    }
+    navigator.pop();
+  }
+
+  Future<void> _confirmRemove() async {
+    final svc       = widget.svc;
+    final acc       = widget.account;
+    final balance   = svc.accountBalance(acc.id);
+    final fmt       = NumberFormat('#,##0.00');
+    final navigator = Navigator.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: MysticColors.surfaceContainerLow,
-        title: Text('Hide account?',
+        title: Text('Remove ${acc.name}?',
             style: headlineStyle(18, italic: true, weight: FontWeight.w700)),
         content: Text(
-          'This will hide "$name" from your home screen and pickers. Your transaction history is preserved — you can restore it anytime.',
+          balance != 0
+              // Removing an account holding money would make the total drop.
+              ? 'This account still holds ${acc.currency} ${fmt.format(balance)}. '
+                  'Removing it hides that balance from your totals. Its history '
+                  'is preserved and you can restore it at any time.'
+              : 'This hides "${acc.name}" from your home screen and pickers. '
+                  'Its history is preserved and you can restore it at any time.',
           style: bodyStyle(14),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text('Cancel',
+                style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('Hide',
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text('Remove',
                 style: bodyStyle(14,
-                    weight: FontWeight.w700,
-                    color: MysticColors.tertiary)),
+                    weight: FontWeight.w700, color: MysticColors.tertiary)),
           ),
         ],
       ),
-    ).then((confirmed) {
-      if (confirmed == true) svc.deactivateAccount(id);
-    });
+    );
+
+    if (confirmed != true) return;
+    await svc.deactivateAccount(acc.id);
+    navigator.pop();
   }
+
+  SnackBar _snack(String msg, Color bg) => SnackBar(
+        content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+        backgroundColor: bg,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      );
 }
 
 // ── Debt snapshot ─────────────────────────────────────────────────────────────
 
 class _DebtSnapshot extends StatelessWidget {
+  final String currency;
   final int iOweCount;
   final int owedToMeCount;
   final double iOweTotal;
@@ -561,6 +803,7 @@ class _DebtSnapshot extends StatelessWidget {
   final VoidCallback onTap;
 
   const _DebtSnapshot({
+    required this.currency,
     required this.iOweCount,
     required this.owedToMeCount,
     required this.iOweTotal,
@@ -594,6 +837,7 @@ class _DebtSnapshot extends StatelessWidget {
             Expanded(
               child: _DebtStat(
                 label: 'I OWE',
+                currency: currency,
                 count: iOweCount,
                 total: iOweTotal,
                 color: MysticColors.tertiary,
@@ -604,6 +848,7 @@ class _DebtSnapshot extends StatelessWidget {
             Expanded(
               child: _DebtStat(
                 label: 'OWED TO ME',
+                currency: currency,
                 count: owedToMeCount,
                 total: owedToMeTotal,
                 color: MysticColors.secondary,
@@ -619,6 +864,7 @@ class _DebtSnapshot extends StatelessWidget {
 
 class _DebtStat extends StatelessWidget {
   final String label;
+  final String currency;
   final int count;
   final double total;
   final Color color;
@@ -626,6 +872,7 @@ class _DebtStat extends StatelessWidget {
 
   const _DebtStat({
     required this.label,
+    required this.currency,
     required this.count,
     required this.total,
     required this.color,
@@ -655,7 +902,7 @@ class _DebtStat extends StatelessWidget {
               style: labelStyle(9, letterSpacing: 1.5, color: color)),
           const SizedBox(height: 8),
           Text(
-            'ETB ${fmt.format(total)}',
+            '$currency ${fmt.format(total)}',
             style: headlineStyle(20,
                 italic: false, weight: FontWeight.w900, color: color),
           ),

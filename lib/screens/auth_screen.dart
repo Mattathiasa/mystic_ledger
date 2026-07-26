@@ -107,26 +107,27 @@ class _AuthScreenState extends State<AuthScreen> {
             onPressed: () async {
               final email = emailCtrl.text.trim();
               if (email.isEmpty) return;
+              // Capture before the async gap so no BuildContext is used after it.
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
               try {
                 await _auth.resetPassword(email);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Reset link sent to $email',
-                          style: bodyStyle(13, color: Colors.white)),
-                      backgroundColor: MysticColors.secondary,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  );
-                }
+                if (!mounted) return;
+                navigator.pop();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Reset link sent to $email',
+                        style: bodyStyle(13, color: Colors.white)),
+                    backgroundColor: MysticColors.secondary,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
               } on FirebaseAuthException catch (e) {
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  setState(() => _error = AuthService.friendlyError(e));
-                }
+                if (!mounted) return;
+                navigator.pop();
+                setState(() => _error = AuthService.friendlyError(e));
               }
             },
             child: Text('Send Link',
@@ -232,7 +233,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           children: [
                             // Name (sign-up only)
                             if (_isSignUp) ...[
-                              _FieldLabel('FULL NAME'),
+                              const _FieldLabel('FULL NAME'),
                               const SizedBox(height: 8),
                               _InputField(
                                 controller: _nameCtrl,
@@ -250,7 +251,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             ],
 
                             // Email
-                            _FieldLabel('EMAIL'),
+                            const _FieldLabel('EMAIL'),
                             const SizedBox(height: 8),
                             _InputField(
                               controller: _emailCtrl,
@@ -271,7 +272,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             const SizedBox(height: 24),
 
                             // Password
-                            _FieldLabel('PASSWORD'),
+                            const _FieldLabel('PASSWORD'),
                             const SizedBox(height: 8),
                             _PasswordField(
                               controller: _passCtrl,

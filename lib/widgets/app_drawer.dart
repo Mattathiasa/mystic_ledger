@@ -12,6 +12,7 @@ import '../screens/savings_screen.dart';
 import '../screens/debt_screen.dart';
 import '../screens/add_account_screen.dart';
 import '../screens/budget_screen.dart';
+import '../screens/currency_settings_screen.dart';
 
 /// Side drawer opened by the hamburger icon in the app bar.
 /// Shows user profile summary, quick nav, and settings.
@@ -43,6 +44,8 @@ class AppDrawer extends StatelessWidget {
                 name: user?.name ?? '—',
                 email: user?.email ?? auth.currentUser?.email ?? '—',
                 balance: svc.totalBalance,
+                currency: svc.baseCurrency,
+                hidden: svc.totalHidden,
                 fmt: fmt,
                 onProfileTap: () {
                   Navigator.pop(context);
@@ -56,7 +59,7 @@ class AppDrawer extends StatelessWidget {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   children: [
-                    _SectionLabel('FINANCIAL TOOLS'),
+                    const _SectionLabel('FINANCIAL TOOLS'),
                     _DrawerTile(
                       icon: Icons.swap_horiz_rounded,
                       label: 'Transfer Funds',
@@ -87,7 +90,7 @@ class AppDrawer extends StatelessWidget {
                     _Divider(),
                     const SizedBox(height: 8),
 
-                    _SectionLabel('SETTINGS'),
+                    const _SectionLabel('SETTINGS'),
                     _DrawerTile(
                       icon: Icons.account_circle_outlined,
                       label: 'My Profile',
@@ -101,7 +104,7 @@ class AppDrawer extends StatelessWidget {
                     ),
                     _DrawerTile(
                       icon: Icons.currency_exchange,
-                      label: 'Currency: ETB (Birr)',
+                      label: 'Currency & rates',
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
@@ -109,11 +112,19 @@ class AppDrawer extends StatelessWidget {
                           color: MysticColors.primaryContainer.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text('DEFAULT',
+                        child: Text(
+                            context.watch<FinanceService>().baseCurrency,
                             style: labelStyle(8, letterSpacing: 1.0,
                                 color: MysticColors.primary)),
                       ),
-                      onTap: () {},
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const CurrencySettingsScreen()));
+                      },
                     ),
 
                     const SizedBox(height: 8),
@@ -172,6 +183,8 @@ class _DrawerHeader extends StatelessWidget {
   final String name;
   final String email;
   final double balance;
+  final String currency;
+  final bool hidden;
   final NumberFormat fmt;
   final VoidCallback onProfileTap;
 
@@ -180,6 +193,8 @@ class _DrawerHeader extends StatelessWidget {
     required this.name,
     required this.email,
     required this.balance,
+    required this.currency,
+    required this.hidden,
     required this.fmt,
     required this.onProfileTap,
   });
@@ -233,7 +248,7 @@ class _DrawerHeader extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'ETB ${fmt.format(balance)}',
+                  hidden ? '••••••' : '$currency ${fmt.format(balance)}',
                   style: bodyStyle(15,
                       weight: FontWeight.w700,
                       color: MysticColors.primaryContainer),

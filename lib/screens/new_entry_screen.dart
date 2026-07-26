@@ -20,6 +20,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   final _amountCtrl = TextEditingController();
   final _titleCtrl  = TextEditingController();
   final _noteCtrl   = TextEditingController();
+  final _feeCtrl    = TextEditingController();
 
   TransactionType    _type     = TransactionType.expense;
   TransactionCategory _category = TransactionCategory.other;
@@ -30,6 +31,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     _amountCtrl.dispose();
     _titleCtrl.dispose();
     _noteCtrl.dispose();
+    _feeCtrl.dispose();
     super.dispose();
   }
 
@@ -40,18 +42,29 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
 
-    context.read<FinanceService>().addTransaction(
-          Transaction(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: _titleCtrl.text.trim(),
-            amount: amount,
-            type: _type,
-            category: _category,
-            accountId: _accountId!,
-            date: DateTime.now(),
-            note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-          ),
-        );
+    final svc = context.read<FinanceService>();
+    // Amounts are recorded in the holding account's currency, with the rate
+    // snapshotted so reports stay stable when rates are updated later.
+    final currency = svc.currencyOf(_accountId!);
+    final fee = _type == TransactionType.expense
+        ? (double.tryParse(_feeCtrl.text.replaceAll(',', '')) ?? 0.0)
+        : 0.0;
+
+    svc.addTransaction(
+      Transaction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: _titleCtrl.text.trim(),
+        amount: amount,
+        type: _type,
+        category: _category,
+        accountId: _accountId!,
+        date: DateTime.now(),
+        note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        currency: currency,
+        rateToBase: svc.settings.rateFor(currency),
+        fee: fee,
+      ),
+    );
     Navigator.of(context).pop();
   }
 
@@ -64,6 +77,10 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     if (_accountId == null && accounts.isNotEmpty) {
       _accountId = accounts.first.id;
     }
+
+    // The entry is denominated in whichever account holds it.
+    final entryCurrency =
+        _accountId == null ? svc.baseCurrency : svc.currencyOf(_accountId!);
 
     final today     = DateTime.now();
     final dayLabel  = _ordinalDay(today.day);
@@ -151,7 +168,18 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _AmountField(controller: _amountCtrl),
+                        _AmountField(
+                          controller: _amountCtrl,
+                          currency: entryCurrency,
+                        ),
+                        // Fees apply to money going out, not coming in.
+                        if (_type == TransactionType.expense) ...[
+                          const SizedBox(height: 20),
+                          _FeeField(
+                            controller: _feeCtrl,
+                            currency: entryCurrency,
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         _divider(),
                         const SizedBox(height: 24),
@@ -230,7 +258,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
 
 class _AmountField extends StatelessWidget {
   final TextEditingController controller;
-  const _AmountField({required this.controller});
+  final String currency;
+  const _AmountField({required this.controller, required this.currency});
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +275,7 @@ class _AmountField extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              'ETB',
+              currency,
               style: headlineStyle(24,
                   italic: false,
                   weight: FontWeight.w700,
@@ -281,6 +310,61 @@ class _AmountField extends StatelessWidget {
           ],
         ),
         Container(height: 1.5, color: MysticColors.outlineVariant.withOpacity(0.3)),
+      ],
+    );
+  }
+}
+
+// ── Fee field ─────────────────────────────────────────────────────────────────
+
+/// Bank or service charge paid alongside an expense. Comes out of the same
+/// account and is tracked separately so total fees can be reported.
+class _FeeField extends StatelessWidget {
+  final TextEditingController controller;
+  final String currency;
+  const _FeeField({required this.controller, required this.currency});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('FEE / SERVICE CHARGE (OPTIONAL)',
+            style: labelStyle(9,
+                letterSpacing: 1.5,
+                color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(currency,
+                style: bodyStyle(15,
+                    weight: FontWeight.w600,
+                    color: MysticColors.tertiary.withOpacity(0.7))),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextFormField(
+                controller: controller,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d,.]')),
+                ],
+                style: bodyStyle(20,
+                    weight: FontWeight.w700, color: MysticColors.tertiary),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: '0.00',
+                  hintStyle: bodyStyle(20, weight: FontWeight.w700)
+                      .copyWith(color: MysticColors.onSurface.withOpacity(0.15)),
+                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Container(
+            height: 1, color: MysticColors.outlineVariant.withOpacity(0.3)),
       ],
     );
   }

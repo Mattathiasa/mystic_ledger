@@ -50,6 +50,10 @@ class SavingsScreen extends StatelessWidget {
                     // ── Hero card ──────────────────────────────────────────
                     _SavingsHeroCard(
                       total: svc.totalSavings,
+                      currency:
+                          svc.currencyOf(FinanceService.idSavings),
+                      hidden:
+                          svc.isAccountHidden(FinanceService.idSavings),
                       fmt: fmt,
                     ),
                     const SizedBox(height: 32),
@@ -103,8 +107,15 @@ class SavingsScreen extends StatelessWidget {
 
 class _SavingsHeroCard extends StatelessWidget {
   final double total;
+  final String currency;
+  final bool hidden;
   final NumberFormat fmt;
-  const _SavingsHeroCard({required this.total, required this.fmt});
+  const _SavingsHeroCard({
+    required this.total,
+    required this.currency,
+    required this.hidden,
+    required this.fmt,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -125,12 +136,12 @@ class _SavingsHeroCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            Positioned(
+            const Positioned(
               right: -10,
               top: -10,
               child: Opacity(
                 opacity: 0.12,
-                child: const Icon(Icons.savings,
+                child: Icon(Icons.savings,
                     size: 130, color: Colors.white),
               ),
             ),
@@ -158,7 +169,7 @@ class _SavingsHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'ETB ${fmt.format(total)}',
+                  hidden ? '••••••' : '$currency ${fmt.format(total)}',
                   style: headlineStyle(40,
                       italic: false,
                       weight: FontWeight.w900,
@@ -263,7 +274,11 @@ class _HistoryList extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${isDeposit ? '+' : '-'}ETB ${fmt.format(t.amount)}',
+                  // Deposits arrive in the vault's currency; withdrawals
+                  // leave in it.
+                  '${isDeposit ? '+' : '-'}'
+                  '${isDeposit ? t.toCurrency : t.currency} '
+                  '${fmt.format(isDeposit ? t.toAmount : t.amount)}',
                   style: bodyStyle(14,
                       weight: FontWeight.w700,
                       color: isDeposit
@@ -291,7 +306,7 @@ class _EmptyHistory extends StatelessWidget {
       child: Center(
         child: Column(
           children: [
-            Icon(Icons.savings_outlined,
+            const Icon(Icons.savings_outlined,
                 size: 52, color: MysticColors.outlineVariant),
             const SizedBox(height: 12),
             Text(
@@ -395,12 +410,26 @@ class _DepositSheetState extends State<_DepositSheet> {
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
 
-    widget.svc.addTransfer(
+    final svc          = widget.svc;
+    final fromCurrency = svc.currencyOf(_fromId!);
+    final toCurrency   = svc.currencyOf(FinanceService.idSavings);
+    // Deposits are usually same-currency; when they aren't, fall back to the
+    // user's own maintained rate. The Transfer screen is where a specific
+    // one-off rate can be entered.
+    final rate = svc.conversionRate(fromCurrency, toCurrency);
+
+    svc.addTransfer(
       Transfer(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         fromAccountId: _fromId!,
         toAccountId: FinanceService.idSavings,
         amount: amount,
+        toAmount: amount * rate,
+        currency: fromCurrency,
+        toCurrency: toCurrency,
+        rate: rate,
+        rateToBase: svc.settings.rateFor(fromCurrency),
+        category: TransferCategory.savings,
         date: DateTime.now(),
         note: 'Savings deposit',
       ),
@@ -486,7 +515,11 @@ class _DepositSheetState extends State<_DepositSheet> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text('ETB',
+                  // Deposits are entered in the source account's currency.
+                  Text(
+                      _fromId == null
+                          ? widget.svc.baseCurrency
+                          : widget.svc.currencyOf(_fromId!),
                       style: headlineStyle(22,
                           italic: false,
                           weight: FontWeight.w700,

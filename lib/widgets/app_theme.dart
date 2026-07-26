@@ -51,7 +51,7 @@ class MysticColors {
 ThemeData buildMysticTheme() {
   return ThemeData(
     useMaterial3: true,
-    colorScheme: ColorScheme(
+    colorScheme: const ColorScheme(
       brightness: Brightness.light,
       primary: MysticColors.primary,
       onPrimary: MysticColors.onPrimary,
@@ -64,11 +64,11 @@ ThemeData buildMysticTheme() {
       tertiary: MysticColors.tertiary,
       onTertiary: MysticColors.onTertiary,
       tertiaryContainer: MysticColors.tertiaryContainer,
-      onTertiaryContainer: const Color(0xFF8A1519),
+      onTertiaryContainer: Color(0xFF8A1519),
       error: MysticColors.error,
       onError: MysticColors.onError,
-      errorContainer: const Color(0xFFFFDAD6),
-      onErrorContainer: const Color(0xFF93000A),
+      errorContainer: Color(0xFFFFDAD6),
+      onErrorContainer: Color(0xFF93000A),
       surface: MysticColors.surface,
       onSurface: MysticColors.onSurface,
       onSurfaceVariant: MysticColors.onSurfaceVariant,
@@ -80,9 +80,9 @@ ThemeData buildMysticTheme() {
       background: MysticColors.background,
       // ignore: deprecated_member_use
       onBackground: MysticColors.onSurface,
-      inverseSurface: const Color(0xFF303221),
-      onInverseSurface: const Color(0xFFF2F2D9),
-      inversePrimary: const Color(0xFFE9C349),
+      inverseSurface: Color(0xFF303221),
+      onInverseSurface: Color(0xFFF2F2D9),
+      inversePrimary: Color(0xFFE9C349),
       surfaceTint: MysticColors.primary,
     ),
     scaffoldBackgroundColor: MysticColors.background,

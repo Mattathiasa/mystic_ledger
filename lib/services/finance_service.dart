@@ -7,6 +7,39 @@ import '../models/transaction.dart';
 import '../models/transfer_model.dart';
 import '../models/debt_model.dart';
 import '../models/budget_model.dart';
+import '../models/app_settings.dart';
+
+/// Time windows shared by the Giving and Insights screens.
+enum LedgerPeriod { week, month, sixMonths, year, all }
+
+extension LedgerPeriodDisplay on LedgerPeriod {
+  String get label {
+    switch (this) {
+      case LedgerPeriod.week:      return 'This Week';
+      case LedgerPeriod.month:     return 'This Month';
+      case LedgerPeriod.sixMonths: return 'Last 6 Months';
+      case LedgerPeriod.year:      return 'This Year';
+      case LedgerPeriod.all:       return 'All Time';
+    }
+  }
+
+  /// Inclusive lower bound, or null for [LedgerPeriod.all].
+  DateTime? startFrom(DateTime now) {
+    switch (this) {
+      case LedgerPeriod.week:
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        return DateTime(monday.year, monday.month, monday.day);
+      case LedgerPeriod.month:
+        return DateTime(now.year, now.month, 1);
+      case LedgerPeriod.sixMonths:
+        return DateTime(now.year, now.month - 5, 1);
+      case LedgerPeriod.year:
+        return DateTime(now.year, 1, 1);
+      case LedgerPeriod.all:
+        return null;
+    }
+  }
+}
 
 /// Central store for all financial data.
 /// Subscribes to Firestore real-time streams for the authenticated user.
@@ -27,6 +60,7 @@ class FinanceService extends ChangeNotifier {
   CollectionReference get _transfers    => _db.collection('users/$userId/transfers');
   CollectionReference get _debts        => _db.collection('users/$userId/debts');
   CollectionReference get _budgets      => _db.collection('users/$userId/budgets');
+  DocumentReference    get _settingsDoc => _db.doc('users/$userId/settings/prefs');
 
   // ── Local caches (updated by Firestore stream listeners) ──────────────────
   List<Account>     _accountList     = [];
@@ -34,11 +68,18 @@ class FinanceService extends ChangeNotifier {
   List<Transfer>    _transferList    = [];
   List<Debt>        _debtList        = [];
   List<Budget>      _budgetList      = [];
+  AppSettings       _settings        = const AppSettings();
   bool _isLoading = true;
-  bool _balanceHidden = false;
 
-  bool get isLoading => _isLoading;
-  bool get balanceHidden => _balanceHidden;
+  // Privacy is device-local (SharedPreferences), not synced: it is about who
+  // can see this phone's screen, not about the account.
+  bool _totalHidden = false;
+  Set<String> _hiddenAccountIds = {};
+
+  bool get isLoading   => _isLoading;
+  AppSettings get settings => _settings;
+  String get baseCurrency  => _settings.baseCurrency;
+  double get titheRate     => _settings.titheRate;
 
   final List<StreamSubscription> _subs = [];
 
@@ -49,17 +90,61 @@ class FinanceService extends ChangeNotifier {
     _subscribe();
   }
 
+  // ── Privacy (device-local) ────────────────────────────────────────────────
+
+  static const _kTotalHidden    = 'balance_hidden';   // legacy key, reused
+  static const _kHiddenAccounts = 'hidden_accounts';
+
+  bool get totalHidden => _totalHidden;
+
+  /// True when [accountId]'s balance should be masked.
+  bool isAccountHidden(String accountId) =>
+      _hiddenAccountIds.contains(accountId);
+
+  /// True when every account and the total are masked.
+  bool get allHidden =>
+      _totalHidden && _accountList.every((a) => isAccountHidden(a.id));
+
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    _balanceHidden = prefs.getBool('balance_hidden') ?? false;
+    _totalHidden = prefs.getBool(_kTotalHidden) ?? false;
+    _hiddenAccountIds =
+        (prefs.getStringList(_kHiddenAccounts) ?? const <String>[]).toSet();
     notifyListeners();
   }
 
-  Future<void> toggleBalanceVisibility() async {
-    _balanceHidden = !_balanceHidden;
-    notifyListeners();
+  Future<void> _persistPrivacy() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('balance_hidden', _balanceHidden);
+    await prefs.setBool(_kTotalHidden, _totalHidden);
+    await prefs.setStringList(_kHiddenAccounts, _hiddenAccountIds.toList());
+  }
+
+  Future<void> toggleTotalVisibility() async {
+    _totalHidden = !_totalHidden;
+    notifyListeners();
+    await _persistPrivacy();
+  }
+
+  Future<void> toggleAccountVisibility(String accountId) async {
+    if (!_hiddenAccountIds.add(accountId)) {
+      _hiddenAccountIds.remove(accountId);
+    }
+    notifyListeners();
+    await _persistPrivacy();
+  }
+
+  Future<void> hideAll() async {
+    _totalHidden = true;
+    _hiddenAccountIds = _accountList.map((a) => a.id).toSet();
+    notifyListeners();
+    await _persistPrivacy();
+  }
+
+  Future<void> showAll() async {
+    _totalHidden = false;
+    _hiddenAccountIds = {};
+    notifyListeners();
+    await _persistPrivacy();
   }
 
   void _subscribe() {
@@ -111,18 +196,33 @@ class FinanceService extends ChangeNotifier {
           .toList();
       _checkLoaded();
     }));
+
+    // Settings (base currency, tithe rate, exchange rates).
+    // A user who has never opened settings has no doc — defaults apply.
+    _subs.add(_settingsDoc.snapshots().listen((snap) {
+      _settings = snap.exists
+          ? AppSettings.fromMap(snap.data() as Map<String, dynamic>)
+          : const AppSettings();
+      _checkLoaded();
+    }));
   }
+
+  /// Number of streams opened in [_subscribe]; loading ends once each has
+  /// delivered at least one snapshot.
+  static const int _streamCount = 6;
 
   int _loadedCount = 0;
   void _checkLoaded() {
     _loadedCount++;
-    if (_loadedCount >= 5) _isLoading = false;
+    if (_loadedCount >= _streamCount) _isLoading = false;
     notifyListeners();
   }
 
   @override
   void dispose() {
-    for (final s in _subs) s.cancel();
+    for (final s in _subs) {
+      s.cancel();
+    }
     super.dispose();
   }
 
@@ -185,64 +285,102 @@ class FinanceService extends ChangeNotifier {
   List<Debt> get iOwe       => _debtList.where((d) => d.type == DebtType.owe  && !d.isPaid).toList();
   List<Debt> get owedToMe   => _debtList.where((d) => d.type == DebtType.owed && !d.isPaid).toList();
 
+  // ── CURRENCY ──────────────────────────────────────────────────────────────
+
+  /// Currency held by [accountId], or the base currency if unknown.
+  String currencyOf(String accountId) =>
+      findAccount(accountId)?.currency ?? baseCurrency;
+
+  /// Converts [amount] from [currency] into the base currency using the
+  /// *current* rate table. Use only for live balances — historical figures
+  /// must use the rate snapshotted on the record (`amountInBase`).
+  double toBase(double amount, String currency) =>
+      amount * _settings.rateFor(currency);
+
+  /// How many units of [to] one unit of [from] buys, derived from the rate
+  /// table. Used as a default when the user hasn't entered a rate explicitly.
+  double conversionRate(String from, String to) {
+    if (from == to) return 1.0;
+    final toRate = _settings.rateFor(to);
+    if (toRate == 0) return 1.0;
+    return _settings.rateFor(from) / toRate;
+  }
+
+  /// Live balance of every account, keyed by currency code.
+  Map<String, double> get balanceByCurrency {
+    final map = <String, double>{};
+    for (final a in _accountList.where((a) => a.isActive)) {
+      map[a.currency] = (map[a.currency] ?? 0) + accountBalance(a.id);
+    }
+    return map;
+  }
+
   // ── AGGREGATES ────────────────────────────────────────────────────────────
+  //
+  // Balances are held in each account's own currency. Totals and reports
+  // convert to the base currency: live balances via the current rate table,
+  // historical income/expense via each record's stored rate snapshot.
 
   double get totalBalance => _accountList
-      .where((a) => a.type != AccountType.savings)
-      .fold(0.0, (sum, a) => sum + accountBalance(a.id));
+      .where((a) => a.isActive && a.type != AccountType.savings)
+      .fold(0.0, (s, a) => s + toBase(accountBalance(a.id), a.currency));
 
-  double get totalIncome => _transactionList
-      .where((t) => t.type == TransactionType.income)
-      .fold(0.0, (s, t) => s + t.amount);
+  double get totalIncome   => incomeInRange();
+  double get totalExpenses => expensesInRange();
+  double get totalFees     => feesInRange();
 
-  double get totalExpenses => _transactionList
-      .where((t) => t.type == TransactionType.expense)
-      .fold(0.0, (s, t) => s + t.amount);
+  /// Income earned in the current calendar week (Mon–Sun), in base currency.
+  double get weeklyIncome =>
+      incomeInRange(from: LedgerPeriod.week.startFrom(DateTime.now()));
 
-  /// Income earned in the current calendar week (Mon–Sun).
-  double get weeklyIncome {
-    final now = DateTime.now();
-    final monday = now.subtract(Duration(days: now.weekday - 1));
-    final weekStart = DateTime(monday.year, monday.month, monday.day);
-    return _transactionList
-        .where((t) => t.type == TransactionType.income)
-        .where((t) => !t.date.isBefore(weekStart))
-        .fold(0.0, (s, t) => s + t.amount);
-  }
+  /// Income earned in the current calendar month, in base currency.
+  double get monthlyIncome =>
+      incomeInRange(from: LedgerPeriod.month.startFrom(DateTime.now()));
 
-  /// Income earned in the current calendar month.
-  double get monthlyIncome {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    return _transactionList
-        .where((t) => t.type == TransactionType.income)
-        .where((t) => !t.date.isBefore(monthStart))
-        .fold(0.0, (s, t) => s + t.amount);
-  }
-
-  double get balance   => totalIncome - totalExpenses;
-  double get tithe     => totalIncome * 0.1;
+  double get balance      => totalIncome - totalExpenses;
   double get totalSavings => accountBalance(idSavings);
 
-  double accountBalance(String accountId) {
-    final fromTx = _transactionList
-        .where((t) => t.accountId == accountId)
-        .fold<double>(0.0,
-            (s, t) => s + (t.type == TransactionType.income ? t.amount : -t.amount));
+  bool _inRange(DateTime d, DateTime? from, DateTime? to) =>
+      (from == null || !d.isBefore(from)) && (to == null || d.isBefore(to));
 
-    final transfersIn  = _transferList
-        .where((t) => t.toAccountId   == accountId)
-        .fold<double>(0.0, (s, t) => s + t.amount);
+  /// Income in base currency between [from] (inclusive) and [to] (exclusive).
+  /// Null bounds mean unbounded.
+  double incomeInRange({DateTime? from, DateTime? to}) => _transactionList
+      .where((t) => t.type == TransactionType.income)
+      .where((t) => _inRange(t.date, from, to))
+      .fold(0.0, (s, t) => s + t.amountInBase);
 
-    final transfersOut = _transferList
-        .where((t) => t.fromAccountId == accountId)
-        .fold<double>(0.0, (s, t) => s + t.amount + t.fee);
+  /// Expenses in base currency. Excludes fees — see [feesInRange].
+  double expensesInRange({DateTime? from, DateTime? to}) => _transactionList
+      .where((t) => t.type == TransactionType.expense)
+      .where((t) => _inRange(t.date, from, to))
+      .fold(0.0, (s, t) => s + t.amountInBase);
 
-    return fromTx + transfersIn - transfersOut;
+  /// Everything lost to bank and service charges — transfer fees plus fees
+  /// attached to expense entries — in base currency.
+  double feesInRange({DateTime? from, DateTime? to}) {
+    final txFees = _transactionList
+        .where((t) => _inRange(t.date, from, to))
+        .fold(0.0, (s, t) => s + t.feeInBase);
+    final transferFees = _transferList
+        .where((t) => _inRange(t.date, from, to))
+        .fold(0.0, (s, t) => s + t.feeInBase);
+    return txFees + transferFees;
   }
 
+  double incomeIn(LedgerPeriod p) =>
+      incomeInRange(from: p.startFrom(DateTime.now()));
+  double expensesIn(LedgerPeriod p) =>
+      expensesInRange(from: p.startFrom(DateTime.now()));
+  double feesIn(LedgerPeriod p) =>
+      feesInRange(from: p.startFrom(DateTime.now()));
+
+  /// Balance of one account, in *that account's own currency*.
+  double accountBalance(String accountId) =>
+      computeAccountBalance(accountId, _transactionList, _transferList);
+
   /// Returns income and expense totals for each of the last [months] calendar months,
-  /// ordered oldest → newest.
+  /// ordered oldest → newest. Values are in base currency.
   List<MonthlySnapshot> lastNMonths(int months) {
     final now = DateTime.now();
     final result = <MonthlySnapshot>[];
@@ -250,24 +388,149 @@ class FinanceService extends ChangeNotifier {
       final target = DateTime(now.year, now.month - i, 1);
       final start = DateTime(target.year, target.month, 1);
       final end   = DateTime(target.year, target.month + 1, 1);
-      final inRange = _transactionList.where(
-        (t) => !t.date.isBefore(start) && t.date.isBefore(end));
-      final income   = inRange.where((t) => t.type == TransactionType.income)
-          .fold(0.0, (s, t) => s + t.amount);
-      final expenses = inRange.where((t) => t.type == TransactionType.expense)
-          .fold(0.0, (s, t) => s + t.amount);
-      result.add(MonthlySnapshot(month: start, income: income, expenses: expenses));
+      result.add(MonthlySnapshot(
+        month:    start,
+        income:   incomeInRange(from: start, to: end),
+        expenses: expensesInRange(from: start, to: end),
+        fees:     feesInRange(from: start, to: end),
+      ));
     }
     return result;
   }
 
-  Map<TransactionCategory, double> get expensesByCategory {
+  /// Income/expense buckets sized to [period] — days for a week, weeks for a
+  /// month, months for longer spans — so the trend chart always shows a
+  /// meaningful number of bars.
+  List<TrendBucket> trendFor(LedgerPeriod period) {
+    final now = DateTime.now();
+    final buckets = <TrendBucket>[];
+
+    void add(String label, DateTime start, DateTime end) {
+      buckets.add(TrendBucket(
+        label:    label,
+        start:    start,
+        income:   incomeInRange(from: start, to: end),
+        expenses: expensesInRange(from: start, to: end),
+        fees:     feesInRange(from: start, to: end),
+      ));
+    }
+
+    switch (period) {
+      case LedgerPeriod.week:
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        final start  = DateTime(monday.year, monday.month, monday.day);
+        const names  = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+        for (var i = 0; i < 7; i++) {
+          final d = start.add(Duration(days: i));
+          add(names[i], d, d.add(const Duration(days: 1)));
+        }
+      case LedgerPeriod.month:
+        final start = DateTime(now.year, now.month, 1);
+        final next  = DateTime(now.year, now.month + 1, 1);
+        var weekStart = start;
+        var w = 1;
+        while (weekStart.isBefore(next)) {
+          var weekEnd = weekStart.add(const Duration(days: 7));
+          if (weekEnd.isAfter(next)) weekEnd = next;
+          add('W$w', weekStart, weekEnd);
+          weekStart = weekEnd;
+          w++;
+        }
+      case LedgerPeriod.sixMonths:
+      case LedgerPeriod.year:
+      case LedgerPeriod.all:
+        final count = period == LedgerPeriod.sixMonths ? 6 : 12;
+        for (var i = count - 1; i >= 0; i--) {
+          final target = DateTime(now.year, now.month - i, 1);
+          final start  = DateTime(target.year, target.month, 1);
+          final end    = DateTime(target.year, target.month + 1, 1);
+          add(_monthAbbr(start.month), start, end);
+        }
+    }
+    return buckets;
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  static String _monthAbbr(int m) => _months[(m - 1) % 12];
+
+  Map<TransactionCategory, double> get expensesByCategory =>
+      expensesByCategoryInRange();
+
+  Map<TransactionCategory, double> expensesByCategoryInRange({
+    DateTime? from,
+    DateTime? to,
+  }) {
     final map = <TransactionCategory, double>{};
-    for (final t in _transactionList.where((t) => t.type == TransactionType.expense)) {
-      map[t.category] = (map[t.category] ?? 0) + t.amount;
+    for (final t in _transactionList
+        .where((t) => t.type == TransactionType.expense)
+        .where((t) => _inRange(t.date, from, to))) {
+      map[t.category] = (map[t.category] ?? 0) + t.amountInBase;
     }
     return map;
   }
+
+  /// Running net position over time (income − expenses − fees, cumulative),
+  /// oldest → newest, for the balance line chart.
+  List<BalancePoint> balanceSeries({DateTime? from, DateTime? to}) {
+    final entries = _transactionList
+        .where((t) => _inRange(t.date, from, to))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    var running = 0.0;
+    return entries.map((t) {
+      running += t.type == TransactionType.income
+          ? t.amountInBase
+          : -(t.amountInBase + t.feeInBase);
+      return BalancePoint(date: t.date, value: running);
+    }).toList();
+  }
+
+  /// Live balance per account in base currency, largest first — for the
+  /// account-distribution chart.
+  List<AccountShare> get accountDistribution {
+    final shares = _accountList
+        .where((a) => a.isActive)
+        .map((a) => AccountShare(
+              account: a,
+              native:  accountBalance(a.id),
+              inBase:  toBase(accountBalance(a.id), a.currency),
+            ))
+        .where((s) => s.inBase != 0)
+        .toList()
+      ..sort((a, b) => b.inBase.compareTo(a.inBase));
+    return shares;
+  }
+
+  // ── TITHE ─────────────────────────────────────────────────────────────────
+  //
+  // Obligation is a share of income earned in the period; what has already
+  // been given in that same period is subtracted to give what is still owed.
+
+  /// Income × the configured rate, for [period].
+  double titheObligation(LedgerPeriod period) =>
+      incomeIn(period) * titheRate;
+
+  /// Tithe actually recorded (expense entries categorised as tithe) in [period].
+  double titheGiven(LedgerPeriod period) {
+    final from = period.startFrom(DateTime.now());
+    return computeTitheGiven(_transactionList, from: from);
+  }
+
+  TitheStatus titheStatus(LedgerPeriod period) => TitheStatus.of(
+        income: incomeIn(period),
+        given: titheGiven(period),
+        rate: titheRate,
+      );
+
+  /// Still owed for [period].
+  double titheRemaining(LedgerPeriod period) => titheStatus(period).remaining;
+
+  /// Fraction of the obligation fulfilled, clamped to 0–1.
+  double titheProgress(LedgerPeriod period) => titheStatus(period).progress;
 
   // ── WRITE: Transactions ───────────────────────────────────────────────────
 
@@ -278,6 +541,85 @@ class FinanceService extends ChangeNotifier {
 
   Future<void> addTransfer(Transfer t) =>
       _transfers.doc(t.id).set(t.toMap());
+
+  Future<void> deleteTransfer(String id) => _transfers.doc(id).delete();
+
+  /// True when some other transfer exists that reverses [id].
+  bool isReversed(String id) =>
+      _transferList.any((t) => t.reversalOfId == id);
+
+  Transfer? findTransfer(String id) {
+    try { return _transferList.firstWhere((t) => t.id == id); }
+    catch (_) { return null; }
+  }
+
+  /// True when [id] can still be undone.
+  bool canReverse(String id) {
+    final t = findTransfer(id);
+    if (t == null) return false;
+    if (t.isReversal) return false;   // don't reverse a reversal
+    return !isReversed(id);           // don't reverse twice
+  }
+
+  /// Undoes a transfer by recording a *new* transfer in the opposite
+  /// direction, so the archive keeps both the original and the correction
+  /// rather than silently losing history.
+  ///
+  /// The fee is normally not returned (the bank keeps it); pass
+  /// [refundFee] to give it back too.
+  Future<void> reverseTransfer(String id, {bool refundFee = false}) async {
+    final original = findTransfer(id);
+    if (original == null) {
+      throw StateError('Transfer $id no longer exists.');
+    }
+    if (original.isReversal) {
+      throw StateError('A reversal cannot itself be reversed.');
+    }
+    if (isReversed(id)) {
+      throw StateError('This transfer has already been reversed.');
+    }
+
+    final reversal = Transfer(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      // Swap direction: what arrived goes back out.
+      fromAccountId: original.toAccountId,
+      toAccountId:   original.fromAccountId,
+      amount:        original.toAmount,
+      toAmount:      refundFee
+          ? original.amount + original.fee
+          : original.amount,
+      fee:           0.0,
+      currency:      original.toCurrency,
+      toCurrency:    original.currency,
+      rate:          original.rate == 0 ? 1.0 : 1 / original.rate,
+      rateToBase:    _settings.rateFor(original.toCurrency),
+      category:      original.category,
+      date:          DateTime.now(),
+      note:          'Reversal of transfer from ${_fmtDate(original.date)}',
+      reversalOfId:  original.id,
+    );
+    await addTransfer(reversal);
+  }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  // ── WRITE: Settings ───────────────────────────────────────────────────────
+
+  Future<void> saveSettings(AppSettings s) =>
+      _settingsDoc.set(s.toMap(), SetOptions(merge: true));
+
+  Future<void> setTitheRate(double rate) =>
+      saveSettings(_settings.copyWith(titheRate: rate));
+
+  Future<void> setBaseCurrency(String code) =>
+      saveSettings(_settings.copyWith(baseCurrency: code));
+
+  /// Records what 1 unit of [code] is worth in the base currency.
+  Future<void> setRate(String code, double rateToBase) {
+    final next = Map<String, double>.from(_settings.rates)..[code] = rateToBase;
+    return saveSettings(_settings.copyWith(rates: next));
+  }
 
   // ── WRITE: Debts ──────────────────────────────────────────────────────────
 
@@ -301,6 +643,27 @@ class FinanceService extends ChangeNotifier {
   Future<void> reactivateAccount(String id) =>
       _accounts.doc(id).update({'isActive': true});
 
+  Future<void> renameAccount(String id, String name) =>
+      _accounts.doc(id).update({'name': name});
+
+  /// True once anything has been recorded against [id].
+  ///
+  /// Amounts are stored in the account's own currency, so changing the
+  /// currency after entries exist would silently reinterpret every one of
+  /// them — [changeAccountCurrency] refuses in that case.
+  bool accountHasActivity(String id) =>
+      _transactionList.any((t) => t.accountId == id) ||
+      _transferList.any((t) => t.fromAccountId == id || t.toAccountId == id);
+
+  Future<void> changeAccountCurrency(String id, String code) async {
+    if (accountHasActivity(id)) {
+      throw StateError(
+          'This account already has entries recorded in its current currency. '
+          'Create a new account instead.');
+    }
+    await _accounts.doc(id).update({'currency': code});
+  }
+
   // ── READ: Budgets ─────────────────────────────────────────────────────────
 
   List<Budget> get budgets => List.unmodifiable(_budgetList);
@@ -320,11 +683,12 @@ class FinanceService extends ChangeNotifier {
       case BudgetPeriod.yearly:
         periodStart = DateTime(now.year, 1, 1);
     }
+    // Budgets are denominated in the base currency, so normalise each entry.
     return _transactionList
         .where((t) => t.type == TransactionType.expense)
         .where((t) => !t.date.isBefore(periodStart))
         .where((t) => budget.category == null || t.category == budget.category)
-        .fold(0.0, (s, t) => s + t.amount);
+        .fold(0.0, (s, t) => s + t.amountInBase + t.feeInBase);
   }
 
   // ── WRITE: Budgets ────────────────────────────────────────────────────────
@@ -354,6 +718,95 @@ class FinanceService extends ChangeNotifier {
   }
 }
 
+// ── Tithe arithmetic ──────────────────────────────────────────────────────────
+
+/// Sum of tithe already recorded, in base currency.
+///
+/// Only expense entries categorised as tithe count — recording the giving is
+/// what makes it count against the obligation.
+double computeTitheGiven(
+  Iterable<Transaction> transactions, {
+  DateTime? from,
+  DateTime? to,
+}) =>
+    transactions
+        .where((t) => t.type == TransactionType.expense)
+        .where((t) => t.category == TransactionCategory.tithe)
+        .where((t) =>
+            (from == null || !t.date.isBefore(from)) &&
+            (to == null || t.date.isBefore(to)))
+        .fold(0.0, (s, t) => s + t.amountInBase);
+
+/// What is owed, what has been given, and how far along that leaves you.
+class TitheStatus {
+  final double obligation;
+  final double given;
+  final double remaining;
+  final double progress; // 0.0 – 1.0
+
+  const TitheStatus._({
+    required this.obligation,
+    required this.given,
+    required this.remaining,
+    required this.progress,
+  });
+
+  factory TitheStatus.of({
+    required double income,
+    required double given,
+    required double rate,
+  }) {
+    // Negative income (net of nothing) or a nonsense rate must not produce a
+    // negative obligation.
+    final obligation = income > 0 ? income * rate : 0.0;
+    final rawRemaining = obligation - given;
+    return TitheStatus._(
+      obligation: obligation,
+      given: given,
+      // Giving extra does not bank a credit against future obligations.
+      remaining: rawRemaining > 0 ? rawRemaining : 0.0,
+      // Nothing owed counts as fulfilled, not as 0% done.
+      progress:
+          obligation <= 0 ? 1.0 : (given / obligation).clamp(0.0, 1.0),
+    );
+  }
+}
+
+// ── Balance arithmetic ────────────────────────────────────────────────────────
+
+/// Balance of [accountId] in that account's own currency.
+///
+/// Kept as a pure function, separate from Firestore, so the arithmetic that
+/// decides how much money a user has can be tested directly.
+///
+/// Sign conventions:
+///  - income adds its amount
+///  - an expense subtracts its amount *and* its fee
+///  - an incoming transfer adds [Transfer.toAmount] (destination currency)
+///  - an outgoing transfer subtracts amount *and* fee (source currency)
+double computeAccountBalance(
+  String accountId,
+  Iterable<Transaction> transactions,
+  Iterable<Transfer> transfers,
+) {
+  final fromTx = transactions.where((t) => t.accountId == accountId).fold<double>(
+      0.0,
+      (s, t) => s +
+          (t.type == TransactionType.income
+              ? t.amount
+              : -(t.amount + t.fee)));
+
+  final transfersIn = transfers
+      .where((t) => t.toAccountId == accountId)
+      .fold<double>(0.0, (s, t) => s + t.toAmount);
+
+  final transfersOut = transfers
+      .where((t) => t.fromAccountId == accountId)
+      .fold<double>(0.0, (s, t) => s + t.amount + t.fee);
+
+  return fromTx + transfersIn - transfersOut;
+}
+
 // ── Unified ledger entry (transaction OR transfer) ────────────────────────────
 
 enum LedgerEntryKind { income, expense, transfer }
@@ -370,6 +823,20 @@ class LedgerEntry {
   final String? toAccountId;     // for transfers
   final String? note;
 
+  /// Currency the amount is denominated in.
+  final String currency;
+
+  /// Amount arriving at the destination (transfers only); differs from
+  /// [amount] on cross-currency transfers.
+  final double toAmount;
+  final String toCurrency;
+
+  /// Set when this entry undoes another transfer.
+  final String? reversalOfId;
+
+  /// Transfer purpose, null for transactions.
+  final TransferCategory? transferCategory;
+
   const LedgerEntry._({
     required this.id,
     required this.title,
@@ -377,46 +844,102 @@ class LedgerEntry {
     required this.fee,
     required this.kind,
     required this.date,
+    required this.currency,
+    double? toAmount,
+    String? toCurrency,
     this.accountId,
     this.fromAccountId,
     this.toAccountId,
     this.note,
-  });
+    this.reversalOfId,
+    this.transferCategory,
+  })  : toAmount   = toAmount   ?? amount,
+        toCurrency = toCurrency ?? currency;
+
+  bool get isReversal => reversalOfId != null;
+  bool get isCrossCurrency => currency != toCurrency;
 
   factory LedgerEntry.fromTransaction(Transaction t) => LedgerEntry._(
         id:        t.id,
         title:     t.title,
         amount:    t.amount,
-        fee:       0,
+        fee:       t.fee,
         kind:      t.type == TransactionType.income
             ? LedgerEntryKind.income
             : LedgerEntryKind.expense,
         date:      t.date,
+        currency:  t.currency,
         accountId: t.accountId,
         note:      t.note,
       );
 
   factory LedgerEntry.fromTransfer(Transfer t) => LedgerEntry._(
         id:            t.id,
-        title:         'Transfer',
+        title:         t.isReversal ? 'Reversal' : 'Transfer',
         amount:        t.amount,
         fee:           t.fee,
         kind:          LedgerEntryKind.transfer,
         date:          t.date,
+        currency:      t.currency,
+        toAmount:      t.toAmount,
+        toCurrency:    t.toCurrency,
         fromAccountId: t.fromAccountId,
         toAccountId:   t.toAccountId,
         note:          t.note,
+        reversalOfId:  t.reversalOfId,
+        transferCategory: t.category,
       );
 }
 
-/// Simple data class for monthly income/expense breakdown.
+/// Simple data class for monthly income/expense breakdown, in base currency.
 class MonthlySnapshot {
   final DateTime month;
   final double income;
   final double expenses;
+  final double fees;
   const MonthlySnapshot({
     required this.month,
     required this.income,
     required this.expenses,
+    this.fees = 0.0,
+  });
+
+  double get net => income - expenses - fees;
+}
+
+/// One bar on the income/expense trend chart, in base currency.
+class TrendBucket {
+  final String label;
+  final DateTime start;
+  final double income;
+  final double expenses;
+  final double fees;
+  const TrendBucket({
+    required this.label,
+    required this.start,
+    required this.income,
+    required this.expenses,
+    required this.fees,
+  });
+}
+
+/// One point on the cumulative balance line, in base currency.
+class BalancePoint {
+  final DateTime date;
+  final double value;
+  const BalancePoint({required this.date, required this.value});
+}
+
+/// An account's share of total holdings, for the distribution chart.
+class AccountShare {
+  final Account account;
+  /// Balance in the account's own currency.
+  final double native;
+  /// The same balance converted to the base currency.
+  final double inBase;
+  const AccountShare({
+    required this.account,
+    required this.native,
+    required this.inBase,
   });
 }

@@ -145,7 +145,11 @@ class _DebtList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
       children: [
         if (unpaid.isNotEmpty) ...[
-          _SummaryBanner(debts: unpaid, type: type, fmt: fmt),
+          _SummaryBanner(
+              debts: unpaid,
+              type: type,
+              fmt: fmt,
+              currency: svc.baseCurrency),
           const SizedBox(height: 20),
           Text('OUTSTANDING',
               style: labelStyle(10,
@@ -182,11 +186,14 @@ class _SummaryBanner extends StatelessWidget {
   final List<Debt> debts;
   final DebtType type;
   final NumberFormat fmt;
+  /// Debts are recorded in the base currency.
+  final String currency;
 
   const _SummaryBanner({
     required this.debts,
     required this.type,
     required this.fmt,
+    required this.currency,
   });
 
   @override
@@ -231,7 +238,7 @@ class _SummaryBanner extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'ETB ${fmt.format(total)}',
+                    '$currency ${fmt.format(total)}',
                     style: headlineStyle(26,
                         italic: false,
                         weight: FontWeight.w900,
@@ -358,7 +365,7 @@ class _DebtCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'ETB ${fmt.format(debt.amount)}',
+                '${svc.baseCurrency} ${fmt.format(debt.amount)}',
                 style: bodyStyle(14,
                     weight: FontWeight.w700,
                     color: muted ? MysticColors.outline : color),
@@ -419,7 +426,7 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(32, 64, 32, 0),
         child: Column(
           children: [
-            Icon(Icons.handshake_outlined,
+            const Icon(Icons.handshake_outlined,
                 size: 56, color: MysticColors.outlineVariant),
             const SizedBox(height: 16),
             Text(
@@ -631,7 +638,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text('ETB',
+                  Text(widget.svc.baseCurrency,
                       style: headlineStyle(22,
                           italic: false,
                           weight: FontWeight.w700,

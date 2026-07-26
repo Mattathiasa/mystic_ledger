@@ -77,7 +77,7 @@ class _BalanceHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
-    final hidden = svc.balanceHidden;
+    final hidden = svc.totalHidden;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -90,12 +90,24 @@ class _BalanceHero extends StatelessWidget {
                   letterSpacing: 2.0,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
             ),
-            GestureDetector(
-              onTap: () => svc.toggleBalanceVisibility(),
-              child: Icon(
-                hidden ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                color: MysticColors.onSurfaceVariant.withOpacity(0.6),
-                size: 20,
+            // Tap masks the total only; long-press masks everything at once.
+            Tooltip(
+              message: 'Tap: hide total · Hold: hide everything',
+              child: GestureDetector(
+                onTap: () => svc.toggleTotalVisibility(),
+                onLongPress: () =>
+                    svc.allHidden ? svc.showAll() : svc.hideAll(),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    hidden
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: MysticColors.onSurfaceVariant.withOpacity(0.6),
+                    size: 20,
+                  ),
+                ),
               ),
             ),
           ],
@@ -130,7 +142,7 @@ class _BalanceHero extends StatelessWidget {
             RichText(
               text: TextSpan(children: [
                 TextSpan(
-                  text: 'ETB ',
+                  text: '${svc.baseCurrency} ',
                   style: bodyStyle(28,
                       weight: FontWeight.w700,
                       color: MysticColors.primary.withOpacity(0.6)),
@@ -188,7 +200,6 @@ class _AccountSection extends StatelessWidget {
         .where((a) => a.type != AccountType.savings)
         .toList();
 
-    final hidden = svc.balanceHidden;
     final cards = visible.asMap().entries.map((e) {
       final idx  = e.key;
       final acc  = e.value;
@@ -197,12 +208,17 @@ class _AccountSection extends StatelessWidget {
       final bg   = _bgColors[idx % _bgColors.length];
       final bal  = svc.accountBalance(acc.id);
       final fmt  = NumberFormat('#,##0.00');
+      // Each account masks independently of the others and of the total.
+      final hidden = svc.isAccountHidden(acc.id);
 
       return _AccountCard(
         label: acc.name,
         badge: acc.typeLabel,
         balance: bal,
-        balanceText: hidden ? '••••••' : 'ETB ${fmt.format(bal)}',
+        balanceText:
+            hidden ? '••••••' : '${acc.currency} ${fmt.format(bal)}',
+        hidden: hidden,
+        onToggleHide: () => svc.toggleAccountVisibility(acc.id),
         icon: acc.icon,
         iconColor: ic,
         bgColor: bg,
@@ -236,6 +252,8 @@ class _AccountCard extends StatelessWidget {
   final String badge;
   final double balance;
   final String balanceText;
+  final bool hidden;
+  final VoidCallback onToggleHide;
   final IconData icon;
   final Color iconColor;
   final Color bgColor;
@@ -246,6 +264,8 @@ class _AccountCard extends StatelessWidget {
     required this.badge,
     required this.balance,
     required this.balanceText,
+    required this.hidden,
+    required this.onToggleHide,
     required this.icon,
     required this.iconColor,
     required this.bgColor,
@@ -285,14 +305,37 @@ class _AccountCard extends StatelessWidget {
                   ),
                   child: Icon(icon, color: iconColor, size: 20),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: MysticColors.onSurface.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(badge,
-                      style: labelStyle(9, letterSpacing: 0.5)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: MysticColors.onSurface.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(badge,
+                          style: labelStyle(9, letterSpacing: 0.5)),
+                    ),
+                    const SizedBox(width: 6),
+                    // Each account hides independently of the rest.
+                    GestureDetector(
+                      onTap: onToggleHide,
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Icon(
+                          hidden
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 15,
+                          color: MysticColors.onSurfaceVariant
+                              .withOpacity(hidden ? 0.75 : 0.35),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -347,7 +390,7 @@ class _RecentSection extends StatelessWidget {
             child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.auto_stories_outlined,
+                  const Icon(Icons.auto_stories_outlined,
                       size: 56, color: MysticColors.outlineVariant),
                   const SizedBox(height: 12),
                   Text(

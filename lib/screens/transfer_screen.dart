@@ -20,16 +20,49 @@ class _TransferScreenState extends State<TransferScreen> {
   final _amountCtrl = TextEditingController();
   final _feeCtrl    = TextEditingController();
   final _noteCtrl   = TextEditingController();
+  final _rateCtrl   = TextEditingController();
 
   String? _fromId;
   String? _toId;
+  TransferCategory? _category;
+
+  @override
+  void initState() {
+    super.initState();
+    // Redraw the conversion preview as the user types.
+    _amountCtrl.addListener(_onConversionInputChanged);
+    _rateCtrl.addListener(_onConversionInputChanged);
+  }
+
+  void _onConversionInputChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    _amountCtrl.removeListener(_onConversionInputChanged);
+    _rateCtrl.removeListener(_onConversionInputChanged);
     _amountCtrl.dispose();
     _feeCtrl.dispose();
     _noteCtrl.dispose();
+    _rateCtrl.dispose();
     super.dispose();
+  }
+
+  double get _amount =>
+      double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
+  double get _fee => double.tryParse(_feeCtrl.text.replaceAll(',', '')) ?? 0.0;
+  double get _rate => double.tryParse(_rateCtrl.text.replaceAll(',', '')) ?? 0.0;
+
+  /// Swaps the two selected accounts. The entered rate no longer applies once
+  /// direction flips, so it is cleared rather than silently inverted.
+  void _swap() {
+    setState(() {
+      final from = _fromId;
+      _fromId = _toId;
+      _toId   = from;
+      _rateCtrl.clear();
+    });
   }
 
   void _save() {
@@ -42,19 +75,34 @@ class _TransferScreenState extends State<TransferScreen> {
       _showError('From and To accounts must be different.');
       return;
     }
-    final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
+    final amount = _amount;
     if (amount <= 0) {
       _showError('Enter a valid amount greater than zero.');
       return;
     }
-    final fee = double.tryParse(_feeCtrl.text.replaceAll(',', '')) ?? 0.0;
+    final fee = _fee;
 
-    final svc = context.read<FinanceService>();
+    final svc  = context.read<FinanceService>();
+    final from = svc.findAccount(_fromId!);
+    final to   = svc.findAccount(_toId!);
+    if (from == null || to == null) {
+      _showError('That account is no longer available.');
+      return;
+    }
+
+    final crossCurrency = from.currency != to.currency;
+    final rate = crossCurrency ? _rate : 1.0;
+    if (crossCurrency && rate <= 0) {
+      _showError(
+          'Enter the rate you got: 1 ${from.currency} = ? ${to.currency}');
+      return;
+    }
+
     final available = svc.accountBalance(_fromId!);
     if (amount + fee > available) {
       final fmt = NumberFormat('#,##0.00');
-      _showError(
-          'Insufficient balance. Available: ETB ${fmt.format(available)}');
+      _showError('Insufficient balance. Available: '
+          '${from.currency} ${fmt.format(available)}');
       return;
     }
 
@@ -64,14 +112,23 @@ class _TransferScreenState extends State<TransferScreen> {
         fromAccountId: _fromId!,
         toAccountId: _toId!,
         amount: amount,
+        toAmount: amount * rate,
         fee: fee,
+        currency: from.currency,
+        toCurrency: to.currency,
+        rate: rate,
+        // Snapshot so fee reporting stays stable if rates change later.
+        rateToBase: svc.settings.rateFor(from.currency),
+        category: _category,
         date: DateTime.now(),
         note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
       ),
     );
 
+    // Capture before the pop so no BuildContext is used afterwards.
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
           'Transfer recorded — gold moved between vaults.',
@@ -105,6 +162,12 @@ class _TransferScreenState extends State<TransferScreen> {
       _fromId = accounts[0].id;
       _toId   = accounts[1].id;
     }
+
+    final from = _fromId == null ? null : svc.findAccount(_fromId!);
+    final to   = _toId   == null ? null : svc.findAccount(_toId!);
+    final fromCurrency = from?.currency ?? svc.baseCurrency;
+    final toCurrency   = to?.currency   ?? svc.baseCurrency;
+    final crossCurrency = fromCurrency != toCurrency;
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -172,17 +235,36 @@ class _TransferScreenState extends State<TransferScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Amount
-                        _SectionLabel('AMOUNT'),
+                        const _SectionLabel('AMOUNT'),
                         const SizedBox(height: 8),
-                        _AmountRow(controller: _amountCtrl),
+                        _AmountRow(
+                          controller: _amountCtrl,
+                          currency: fromCurrency,
+                        ),
                         const SizedBox(height: 16),
 
+                        // Exchange rate — only when the two sides differ
+                        if (crossCurrency) ...[
+                          _ExchangeRateRow(
+                            controller: _rateCtrl,
+                            fromCurrency: fromCurrency,
+                            toCurrency: toCurrency,
+                            amount: _amount,
+                            rate: _rate,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
                         // Fee (optional)
-                        _SectionLabel('TRANSFER FEE (OPTIONAL)'),
+                        const _SectionLabel(
+                            'TRANSFER FEE / SERVICE CHARGE (OPTIONAL)'),
                         const SizedBox(height: 8),
-                        _FeeField(controller: _feeCtrl),
+                        _FeeField(
+                          controller: _feeCtrl,
+                          currency: fromCurrency,
+                        ),
                         const SizedBox(height: 28),
-                        _Divider(),
+                        const _Divider(),
 
                         // From / To selectors
                         const SizedBox(height: 24),
@@ -192,13 +274,26 @@ class _TransferScreenState extends State<TransferScreen> {
                           toId: _toId,
                           onFromChanged: (id) => setState(() => _fromId = id),
                           onToChanged:   (id) => setState(() => _toId   = id),
+                          onSwap: _swap,
                         ),
                         const SizedBox(height: 28),
-                        _Divider(),
+                        const _Divider(),
+
+                        // Category
+                        const SizedBox(height: 24),
+                        const _SectionLabel('WHAT IS THIS FOR? (OPTIONAL)'),
+                        const SizedBox(height: 12),
+                        _CategoryPicker(
+                          selected: _category,
+                          onChanged: (c) => setState(
+                              () => _category = _category == c ? null : c),
+                        ),
+                        const SizedBox(height: 28),
+                        const _Divider(),
 
                         // Note
                         const SizedBox(height: 24),
-                        _SectionLabel('NOTE (OPTIONAL)'),
+                        const _SectionLabel('NOTE (OPTIONAL)'),
                         const SizedBox(height: 8),
                         _NoteField(controller: _noteCtrl),
                         const SizedBox(height: 32),
@@ -236,7 +331,8 @@ class _TransferScreenState extends State<TransferScreen> {
 
 class _AmountRow extends StatelessWidget {
   final TextEditingController controller;
-  const _AmountRow({required this.controller});
+  final String currency;
+  const _AmountRow({required this.controller, required this.currency});
 
   @override
   Widget build(BuildContext context) {
@@ -244,7 +340,7 @@ class _AmountRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
-          'ETB',
+          currency,
           style: headlineStyle(24,
               italic: false,
               weight: FontWeight.w700,
@@ -289,6 +385,7 @@ class _AccountFlowRow extends StatelessWidget {
   final String? toId;
   final ValueChanged<String> onFromChanged;
   final ValueChanged<String> onToChanged;
+  final VoidCallback onSwap;
 
   const _AccountFlowRow({
     required this.accounts,
@@ -296,6 +393,7 @@ class _AccountFlowRow extends StatelessWidget {
     required this.toId,
     required this.onFromChanged,
     required this.onToChanged,
+    required this.onSwap,
   });
 
   @override
@@ -303,7 +401,7 @@ class _AccountFlowRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionLabel('FROM'),
+        const _SectionLabel('FROM'),
         const SizedBox(height: 8),
         _AccountDropdown(
           accounts: accounts,
@@ -311,20 +409,28 @@ class _AccountFlowRow extends StatelessWidget {
           onChanged: onFromChanged,
         ),
         const SizedBox(height: 20),
-        // Arrow connector
+        // Arrow connector doubles as the swap control.
         Center(
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: MysticColors.primaryContainer.withOpacity(0.2),
-              shape: BoxShape.circle,
+          child: Tooltip(
+            message: 'Swap From and To',
+            child: GestureDetector(
+              onTap: onSwap,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: MysticColors.primaryContainer.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: MysticColors.primary.withOpacity(0.25)),
+                ),
+                child: const Icon(Icons.swap_vert,
+                    color: MysticColors.primary, size: 20),
+              ),
             ),
-            child: const Icon(Icons.arrow_downward,
-                color: MysticColors.primary, size: 20),
           ),
         ),
         const SizedBox(height: 20),
-        _SectionLabel('TO'),
+        const _SectionLabel('TO'),
         const SizedBox(height: 8),
         _AccountDropdown(
           accounts: accounts,
@@ -386,13 +492,14 @@ class _AccountDropdown extends StatelessWidget {
 
 class _FeeField extends StatelessWidget {
   final TextEditingController controller;
-  const _FeeField({required this.controller});
+  final String currency;
+  const _FeeField({required this.controller, required this.currency});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text('ETB',
+        Text(currency,
             style: bodyStyle(16,
                 weight: FontWeight.w600,
                 color: MysticColors.tertiary.withOpacity(0.7))),
@@ -423,6 +530,170 @@ class _FeeField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Exchange rate row ─────────────────────────────────────────────────────────
+
+/// Shown only when the two accounts hold different currencies. The user types
+/// the rate they actually got at that moment; it is stored on the transfer so
+/// the record reflects reality rather than a later market rate.
+class _ExchangeRateRow extends StatelessWidget {
+  final TextEditingController controller;
+  final String fromCurrency;
+  final String toCurrency;
+  final double amount;
+  final double rate;
+
+  const _ExchangeRateRow({
+    required this.controller,
+    required this.fromCurrency,
+    required this.toCurrency,
+    required this.amount,
+    required this.rate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    final converted = amount * rate;
+    final ready = amount > 0 && rate > 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: MysticColors.primaryContainer.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14),
+        border:
+            Border.all(color: MysticColors.primary.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.currency_exchange,
+                  size: 14, color: MysticColors.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('RATE AT THIS TIME',
+                    style: labelStyle(9,
+                        letterSpacing: 1.5, color: MysticColors.primary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('1 $fromCurrency  =',
+                  style: bodyStyle(14, weight: FontWeight.w600)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: controller,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[\d,.]')),
+                  ],
+                  style: bodyStyle(18,
+                      weight: FontWeight.w800, color: MysticColors.primary),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: '0.00',
+                    hintStyle: bodyStyle(18,
+                        weight: FontWeight.w800,
+                        color: MysticColors.onSurface.withOpacity(0.2)),
+                    contentPadding: const EdgeInsets.only(bottom: 6),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(
+                          color: MysticColors.primary.withOpacity(0.35)),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide:
+                          BorderSide(color: MysticColors.primary, width: 1.5),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(toCurrency, style: bodyStyle(14, weight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            ready
+                ? '≈ $toCurrency ${fmt.format(converted)} will arrive'
+                : 'Enter the rate to see what arrives',
+            style: bodyStyle(13,
+                    weight: ready ? FontWeight.w700 : FontWeight.w400,
+                    color: ready
+                        ? MysticColors.secondary
+                        : MysticColors.onSurfaceVariant.withOpacity(0.6))
+                .copyWith(fontStyle: ready ? null : FontStyle.italic),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Category picker ───────────────────────────────────────────────────────────
+
+class _CategoryPicker extends StatelessWidget {
+  final TransferCategory? selected;
+  final ValueChanged<TransferCategory> onChanged;
+
+  const _CategoryPicker({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: TransferCategory.values.map((c) {
+        final active = c == selected;
+        return GestureDetector(
+          onTap: () => onChanged(c),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: active
+                  ? MysticColors.primary
+                  : MysticColors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: active
+                    ? MysticColors.primary
+                    : MysticColors.outlineVariant.withOpacity(0.25),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(c.icon,
+                    size: 14,
+                    color: active
+                        ? MysticColors.onPrimary
+                        : MysticColors.onSurfaceVariant.withOpacity(0.6)),
+                const SizedBox(width: 6),
+                Text(
+                  c.label,
+                  style: labelStyle(10,
+                      letterSpacing: 0.4,
+                      color: active
+                          ? MysticColors.onPrimary
+                          : MysticColors.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

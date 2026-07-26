@@ -7,10 +7,42 @@ import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
 import '../models/transaction.dart';
 
+/// Categorical palette for charts.
+///
+/// Validated for colour-vision deficiency against the parchment surface
+/// (#F5F5DC): every adjacent pair clears ΔE 8 under protan/deutan/tritan
+/// simulation, every swatch clears 3:1 contrast, and none reads as grey.
+/// Do not reorder or substitute without re-validating — the previous palette
+/// put dark gold next to forest green, which are near-identical (ΔE 2.5) to a
+/// red-blind reader.
+class ChartPalette {
+  static const red    = Color(0xFFA83232);
+  static const blue   = Color(0xFF2F6BB8);
+  static const amber  = Color(0xFFB87200);
+  static const purple = Color(0xFF8E4FA8);
+  static const green  = Color(0xFF12864C);
+  static const indigo = Color(0xFF6B5BC4);
+  static const orange = Color(0xFFB5561E);
+  static const teal   = Color(0xFF0A9396);
+
+  static const ordered = [red, blue, amber, purple, green, indigo, orange, teal];
+
+  /// Colour is bound to the category itself, never to its rank in a sorted
+  /// list — otherwise changing the period would repaint every slice.
+  static Color forCategory(TransactionCategory c) =>
+      ordered[c.index % ordered.length];
+}
+
 /// Tab 4 — Insights / Reports.
-/// Visual charts: monthly bar chart, category donut, top expenditures.
-class InsightsScreen extends StatelessWidget {
+class InsightsScreen extends StatefulWidget {
   const InsightsScreen({super.key});
+
+  @override
+  State<InsightsScreen> createState() => _InsightsScreenState();
+}
+
+class _InsightsScreenState extends State<InsightsScreen> {
+  LedgerPeriod _period = LedgerPeriod.month;
 
   @override
   Widget build(BuildContext context) {
@@ -23,20 +55,57 @@ class InsightsScreen extends StatelessWidget {
             return const Center(
                 child: CircularProgressIndicator(color: MysticColors.primary));
           }
+
+          final from = _period.startFrom(DateTime.now());
+          final byCategory = svc.expensesByCategoryInRange(from: from);
+          final hasAnything = svc.transactions.isNotEmpty;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 32, 24, 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _InsightsHeader(svc: svc),
-                const SizedBox(height: 32),
-                _MonthlyBarChart(svc: svc),
-                const SizedBox(height: 32),
-                _CategoryDonut(svc: svc),
-                const SizedBox(height: 32),
-                _TopExpenditures(svc: svc),
-                const SizedBox(height: 32),
-                _InsightFooter(svc: svc),
+                Text('OBSERVATIONS',
+                    style: labelStyle(10,
+                        letterSpacing: 2.0,
+                        color:
+                            MysticColors.onSurfaceVariant.withOpacity(0.7))),
+                const SizedBox(height: 8),
+                Text('Insights',
+                    style:
+                        headlineStyle(48, italic: true, weight: FontWeight.w900)),
+                const SizedBox(height: 20),
+
+                // One control drives every card below it.
+                _PeriodSelector(
+                  selected: _period,
+                  onChanged: (p) => setState(() => _period = p),
+                ),
+                const SizedBox(height: 24),
+
+                if (!hasAnything)
+                  const _EmptyState(
+                    icon: Icons.insights_outlined,
+                    message: 'No entries yet.\n'
+                        'Add income or an expense and your reports appear here.',
+                  )
+                else ...[
+                  _SummaryGrid(svc: svc, period: _period),
+                  const SizedBox(height: 28),
+                  _TrendChart(svc: svc, period: _period),
+                  const SizedBox(height: 28),
+                  _BalanceLine(svc: svc, period: _period),
+                  const SizedBox(height: 28),
+                  _CategoryDonut(
+                    svc: svc,
+                    period: _period,
+                    data: byCategory,
+                  ),
+                  const SizedBox(height: 28),
+                  _FeesCard(svc: svc, period: _period),
+                  const SizedBox(height: 28),
+                  _AccountDistribution(svc: svc),
+                ],
               ],
             ),
           );
@@ -46,53 +115,119 @@ class InsightsScreen extends StatelessWidget {
   }
 }
 
-// ── Header summary ────────────────────────────────────────────────────────────
+// ── Period selector ───────────────────────────────────────────────────────────
 
-class _InsightsHeader extends StatelessWidget {
-  final FinanceService svc;
-  const _InsightsHeader({required this.svc});
+class _PeriodSelector extends StatelessWidget {
+  final LedgerPeriod selected;
+  final ValueChanged<LedgerPeriod> onChanged;
+  const _PeriodSelector({required this.selected, required this.onChanged});
+
+  static const _short = {
+    LedgerPeriod.week:      'Week',
+    LedgerPeriod.month:     'Month',
+    LedgerPeriod.sixMonths: '6 Months',
+    LedgerPeriod.year:      'Year',
+    LedgerPeriod.all:       'All',
+  };
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat('#,##0');
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: LedgerPeriod.values.map((p) {
+          final active = p == selected;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onChanged(p),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: active
+                      ? MysticColors.primary
+                      : MysticColors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: active
+                        ? MysticColors.primary
+                        : MysticColors.outlineVariant.withOpacity(0.3),
+                  ),
+                ),
+                child: Text(
+                  _short[p]!,
+                  style: labelStyle(10,
+                      letterSpacing: 1.0,
+                      color: active
+                          ? MysticColors.onPrimary
+                          : MysticColors.onSurfaceVariant),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ── Summary tiles ─────────────────────────────────────────────────────────────
+
+/// All four figures read from the same date range — previously income was
+/// monthly while expenses and balance were all-time.
+class _SummaryGrid extends StatelessWidget {
+  final FinanceService svc;
+  final LedgerPeriod period;
+  const _SummaryGrid({required this.svc, required this.period});
+
+  @override
+  Widget build(BuildContext context) {
+    final income   = svc.incomeIn(period);
+    final expenses = svc.expensesIn(period);
+    final fees     = svc.feesIn(period);
+    final net      = income - expenses - fees;
+    final cur      = svc.baseCurrency;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('MONTHLY OBSERVATIONS',
-            style: labelStyle(10,
-                letterSpacing: 2.0,
-                color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
-        const SizedBox(height: 8),
-        Text('Insights',
-            style: headlineStyle(48, italic: true, weight: FontWeight.w900)),
-        const SizedBox(height: 24),
         Row(
           children: [
             Expanded(
-              child: _SummaryTile(
+              child: _StatTile(
                 label: 'INCOME',
-                value: 'ETB ${fmt.format(svc.monthlyIncome)}',
-                color: MysticColors.secondary,
-                rotation: 0.005,
+                value: _money(cur, income),
+                mark: ChartPalette.green,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _SummaryTile(
+              child: _StatTile(
                 label: 'EXPENSES',
-                value: 'ETB ${fmt.format(svc.totalExpenses)}',
-                color: MysticColors.tertiary,
-                rotation: -0.009,
+                value: _money(cur, expenses),
+                mark: ChartPalette.red,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _StatTile(
+                label: 'NET',
+                value: _money(cur, net),
+                mark: net >= 0 ? ChartPalette.green : ChartPalette.red,
+                emphasise: true,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _SummaryTile(
-                label: 'BALANCE',
-                value: 'ETB ${fmt.format(svc.balance)}',
-                color: MysticColors.primary,
-                rotation: 0.004,
-                highlight: true,
+              child: _StatTile(
+                label: 'FEES PAID',
+                value: _money(cur, fees),
+                mark: ChartPalette.orange,
               ),
             ),
           ],
@@ -102,49 +237,605 @@ class _InsightsHeader extends StatelessWidget {
   }
 }
 
-class _SummaryTile extends StatelessWidget {
+String _money(String currency, double v) =>
+    '$currency ${NumberFormat('#,##0.00').format(v)}';
+
+/// Value text stays in ink; the small colour chip carries identity. Colouring
+/// the number itself makes it harder to read and doubles the colour load.
+class _StatTile extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
-  final double rotation;
-  final bool highlight;
-  const _SummaryTile({
+  final Color mark;
+  final bool emphasise;
+
+  const _StatTile({
     required this.label,
     required this.value,
-    required this.color,
-    required this.rotation,
-    this.highlight = false,
+    required this.mark,
+    this.emphasise = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: rotation,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: highlight
-              ? MysticColors.surfaceContainerHighest
-              : MysticColors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: MysticColors.onSurface.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: emphasise
+            ? MysticColors.surfaceContainerHighest
+            : MysticColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: MysticColors.outlineVariant.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: mark, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(label,
+                    style: labelStyle(9,
+                        letterSpacing: 1.2,
+                        color:
+                            MysticColors.onSurfaceVariant.withOpacity(0.8))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: bodyStyle(emphasise ? 18 : 16,
+                  weight: FontWeight.w800, color: MysticColors.onSurface),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Trend chart ───────────────────────────────────────────────────────────────
+
+class _TrendChart extends StatelessWidget {
+  final FinanceService svc;
+  final LedgerPeriod period;
+  const _TrendChart({required this.svc, required this.period});
+
+  @override
+  Widget build(BuildContext context) {
+    final buckets = svc.trendFor(period);
+    final maxV = buckets.fold<double>(
+        0, (m, b) => [m, b.income, b.expenses].reduce((a, c) => a > c ? a : c));
+    final yMax = maxV > 0 ? maxV * 1.25 : 1000.0;
+
+    return _ChartCard(
+      icon: Icons.bar_chart_rounded,
+      title: 'Income vs Expenses',
+      subtitle: period.label,
+      legend: const [
+        _LegendDot(color: ChartPalette.green, label: 'Income'),
+        _LegendDot(color: ChartPalette.red, label: 'Expenses'),
+      ],
+      child: maxV == 0
+          ? const _InlineEmpty(message: 'Nothing recorded in this period.')
+          : SizedBox(
+              height: 190,
+              child: BarChart(
+                BarChartData(
+                  maxY: yMax,
+                  minY: 0,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: yMax / 4,
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: MysticColors.onSurface.withOpacity(0.06),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 44,
+                        interval: yMax / 4,
+                        getTitlesWidget: (val, meta) {
+                          if (val == 0 || val >= meta.max) {
+                            return const SizedBox.shrink();
+                          }
+                          return Text(_compact(val),
+                              style: labelStyle(9,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6)));
+                        },
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 24,
+                        getTitlesWidget: (val, _) {
+                          final i = val.toInt();
+                          if (i < 0 || i >= buckets.length) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(buckets[i].label,
+                                style: labelStyle(9,
+                                    color: MysticColors.onSurfaceVariant
+                                        .withOpacity(0.7))),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barGroups: buckets.asMap().entries.map((e) {
+                    return BarChartGroupData(
+                      x: e.key,
+                      // 2px gap between the paired bars keeps the fills from
+                      // reading as one shape.
+                      barsSpace: 2,
+                      barRods: [
+                        _rod(e.value.income, ChartPalette.green),
+                        _rod(e.value.expenses, ChartPalette.red),
+                      ],
+                    );
+                  }).toList(),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) =>
+                          MysticColors.surfaceContainerHighest,
+                      tooltipRoundedRadius: 10,
+                      getTooltipItem: (group, _, rod, rodIdx) {
+                        final b = buckets[group.x];
+                        final label = rodIdx == 0 ? 'Income' : 'Expenses';
+                        return BarTooltipItem(
+                          '${b.label} · $label\n'
+                          '${_money(svc.baseCurrency, rod.toY)}',
+                          bodyStyle(12,
+                              weight: FontWeight.w600,
+                              color: MysticColors.onSurface),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  BarChartRodData _rod(double v, Color c) => BarChartRodData(
+        toY: v,
+        color: c,
+        width: 9,
+        // Rounded data-end only; the base stays anchored to the axis.
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(4),
+          topRight: Radius.circular(4),
+        ),
+      );
+}
+
+String _compact(double v) {
+  if (v.abs() >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+  if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(0)}k';
+  return v.toStringAsFixed(0);
+}
+
+// ── Cumulative balance line ───────────────────────────────────────────────────
+
+class _BalanceLine extends StatelessWidget {
+  final FinanceService svc;
+  final LedgerPeriod period;
+  const _BalanceLine({required this.svc, required this.period});
+
+  @override
+  Widget build(BuildContext context) {
+    final series = svc.balanceSeries(from: period.startFrom(DateTime.now()));
+
+    return _ChartCard(
+      icon: Icons.show_chart_rounded,
+      title: 'Running Balance',
+      subtitle: 'Cumulative net position · ${period.label}',
+      child: series.length < 2
+          ? const _InlineEmpty(
+              message: 'At least two entries are needed to draw a trend.')
+          : SizedBox(
+              height: 180,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: MysticColors.onSurface.withOpacity(0.06),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 44,
+                        getTitlesWidget: (val, meta) {
+                          if (val == meta.min || val == meta.max) {
+                            return const SizedBox.shrink();
+                          }
+                          return Text(_compact(val),
+                              style: labelStyle(9,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6)));
+                        },
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: series
+                          .asMap()
+                          .entries
+                          .map((e) =>
+                              FlSpot(e.key.toDouble(), e.value.value))
+                          .toList(),
+                      isCurved: true,
+                      curveSmoothness: 0.2,
+                      color: ChartPalette.blue,
+                      barWidth: 2,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: ChartPalette.blue.withOpacity(0.10),
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (_) =>
+                          MysticColors.surfaceContainerHighest,
+                      tooltipRoundedRadius: 10,
+                      getTooltipItems: (spots) => spots.map((s) {
+                        final p = series[s.x.toInt()];
+                        return LineTooltipItem(
+                          '${DateFormat('MMM d').format(p.date)}\n'
+                          '${_money(svc.baseCurrency, p.value)}',
+                          bodyStyle(12,
+                              weight: FontWeight.w600,
+                              color: MysticColors.onSurface),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+// ── Category donut ────────────────────────────────────────────────────────────
+
+class _CategoryDonut extends StatefulWidget {
+  final FinanceService svc;
+  final LedgerPeriod period;
+  final Map<TransactionCategory, double> data;
+  const _CategoryDonut({
+    required this.svc,
+    required this.period,
+    required this.data,
+  });
+
+  @override
+  State<_CategoryDonut> createState() => _CategoryDonutState();
+}
+
+class _CategoryDonutState extends State<_CategoryDonut> {
+  int _touched = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = widget.data.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final total = sorted.fold(0.0, (s, e) => s + e.value);
+
+    return _ChartCard(
+      icon: Icons.donut_large_rounded,
+      title: 'Spending by Category',
+      subtitle: 'Tap a slice to see the entries',
+      child: sorted.isEmpty
+          ? const _InlineEmpty(message: 'No expenses in this period.')
+          : Column(
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 132,
+                      height: 132,
+                      child: PieChart(
+                        PieChartData(
+                          pieTouchData: PieTouchData(
+                            touchCallback: (event, response) {
+                              final idx = response
+                                  ?.touchedSection?.touchedSectionIndex;
+                              if (event is FlTapUpEvent &&
+                                  idx != null &&
+                                  idx >= 0 &&
+                                  idx < sorted.length) {
+                                _openDrilldown(sorted[idx].key);
+                              }
+                              setState(() {
+                                _touched = (!event.isInterestedForInteractions ||
+                                        idx == null)
+                                    ? -1
+                                    : idx;
+                              });
+                            },
+                          ),
+                          // 2px gap so adjacent fills stay distinct.
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 36,
+                          sections: sorted.asMap().entries.map((e) {
+                            final isTouched = e.key == _touched;
+                            final pct =
+                                total > 0 ? e.value.value / total : 0.0;
+                            return PieChartSectionData(
+                              value: e.value.value,
+                              color: ChartPalette.forCategory(e.value.key),
+                              radius: isTouched ? 40 : 32,
+                              // Only label slices with room for the text.
+                              title: pct > 0.08
+                                  ? '${(pct * 100).round()}%'
+                                  : '',
+                              titleStyle: labelStyle(9,
+                                  color: Colors.white, letterSpacing: 0.3),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    // Names in the legend mean identity is never colour-alone.
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: sorted.map((e) {
+                          final pct = total > 0
+                              ? (e.value / total * 100).round()
+                              : 0;
+                          return InkWell(
+                            onTap: () => _openDrilldown(e.key),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 9,
+                                    height: 9,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          ChartPalette.forCategory(e.key),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(_label(e.key),
+                                        style: bodyStyle(12,
+                                            weight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  Text('$pct%',
+                                      style: labelStyle(10,
+                                          letterSpacing: 0.3,
+                                          color: MysticColors
+                                              .onSurfaceVariant)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                    height: 1,
+                    color: MysticColors.outlineVariant.withOpacity(0.2)),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('TOTAL',
+                        style: labelStyle(10,
+                            letterSpacing: 1.5,
+                            color: MysticColors.onSurfaceVariant
+                                .withOpacity(0.7))),
+                    Text(_money(widget.svc.baseCurrency, total),
+                        style: bodyStyle(15,
+                            weight: FontWeight.w800,
+                            color: MysticColors.onSurface)),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+
+  void _openDrilldown(TransactionCategory category) {
+    final from = widget.period.startFrom(DateTime.now());
+    final entries = widget.svc.transactions
+        .where((t) => t.type == TransactionType.expense)
+        .where((t) => t.category == category)
+        .where((t) => from == null || !t.date.isBefore(from))
+        .toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _DrilldownSheet(
+        title: _label(category),
+        color: ChartPalette.forCategory(category),
+        entries: entries,
+        svc: widget.svc,
+      ),
+    );
+  }
+}
+
+String _label(TransactionCategory cat) {
+  switch (cat) {
+    case TransactionCategory.food:          return 'Food';
+    case TransactionCategory.transport:     return 'Transport';
+    case TransactionCategory.utilities:     return 'Utilities';
+    case TransactionCategory.entertainment: return 'Entertainment';
+    case TransactionCategory.tithe:         return 'Tithe';
+    case TransactionCategory.salary:        return 'Salary';
+    case TransactionCategory.freelance:     return 'Freelance';
+    case TransactionCategory.other:         return 'Other';
+  }
+}
+
+// ── Drill-down sheet ──────────────────────────────────────────────────────────
+
+class _DrilldownSheet extends StatelessWidget {
+  final String title;
+  final Color color;
+  final List<Transaction> entries;
+  final FinanceService svc;
+
+  const _DrilldownSheet({
+    required this.title,
+    required this.color,
+    required this.entries,
+    required this.svc,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = entries.fold<double>(0, (s, t) => s + t.amountInBase);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFFDFCF0),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: labelStyle(8,
-                    letterSpacing: 1.2,
-                    color: MysticColors.onSurface.withOpacity(0.6))),
-            const SizedBox(height: 6),
-            Text(value,
-                style: bodyStyle(14, weight: FontWeight.w700, color: color)),
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: MysticColors.outlineVariant.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration:
+                        BoxDecoration(color: color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(title,
+                        style: headlineStyle(24,
+                            italic: true, weight: FontWeight.w900)),
+                  ),
+                  Text(_money(svc.baseCurrency, total),
+                      style: bodyStyle(15, weight: FontWeight.w800)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: entries.isEmpty
+                  ? const Center(child: _InlineEmpty(message: 'No entries.'))
+                  : ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                      itemCount: entries.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 18,
+                        color: MysticColors.outlineVariant.withOpacity(0.25),
+                      ),
+                      itemBuilder: (context, i) {
+                        final t = entries[i];
+                        final account = svc.findAccount(t.accountId)?.name;
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    t.title.isEmpty ? 'Untitled' : t.title,
+                                    style: bodyStyle(14,
+                                        weight: FontWeight.w600),
+                                  ),
+                                  Text(
+                                    '${DateFormat('MMM d, yyyy').format(t.date)}'
+                                    '${account == null ? '' : ' · $account'}',
+                                    style: labelStyle(9,
+                                        letterSpacing: 0.3,
+                                        color: MysticColors.onSurfaceVariant
+                                            .withOpacity(0.6)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('${t.currency} '
+                                    '${NumberFormat('#,##0.00').format(t.amount)}',
+                                    style: bodyStyle(14,
+                                        weight: FontWeight.w700)),
+                                if (t.fee > 0)
+                                  Text(
+                                    '+ fee ${NumberFormat('#,##0.00').format(t.fee)}',
+                                    style: labelStyle(9,
+                                        letterSpacing: 0.3,
+                                        color: ChartPalette.orange),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),
@@ -152,164 +843,229 @@ class _SummaryTile extends StatelessWidget {
   }
 }
 
-// ── Monthly bar chart (income vs expense, last 6 months) ─────────────────────
+// ── Fees card ─────────────────────────────────────────────────────────────────
 
-class _MonthlyBarChart extends StatelessWidget {
+class _FeesCard extends StatelessWidget {
   final FinanceService svc;
-  const _MonthlyBarChart({required this.svc});
+  final LedgerPeriod period;
+  const _FeesCard({required this.svc, required this.period});
 
   @override
   Widget build(BuildContext context) {
-    final months = svc.lastNMonths(6);
-    double maxY = 0.0;
-    for (final s in months) {
-      if (s.income > maxY) maxY = s.income;
-      if (s.expenses > maxY) maxY = s.expenses;
-    }
-    final double yMax = maxY > 0 ? (maxY * 1.25).ceilToDouble() : 1000.0;
+    final fees     = svc.feesIn(period);
+    final expenses = svc.expensesIn(period);
+    final share    = expenses > 0 ? (fees / (expenses + fees)) : 0.0;
 
+    return _ChartCard(
+      icon: Icons.percent_rounded,
+      title: 'Lost to Fees',
+      subtitle: 'Bank and service charges · ${period.label}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_money(svc.baseCurrency, fees),
+              style: headlineStyle(32,
+                  italic: false,
+                  weight: FontWeight.w900,
+                  color: MysticColors.onSurface)),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: share.clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: MysticColors.outlineVariant.withOpacity(0.25),
+              color: ChartPalette.orange,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            fees == 0
+                ? 'No fees recorded in this period.'
+                : '${(share * 100).toStringAsFixed(1)}% of everything you spent '
+                    'went to charges rather than to what you bought.',
+            style: bodyStyle(12, color: MysticColors.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Account distribution ──────────────────────────────────────────────────────
+
+class _AccountDistribution extends StatelessWidget {
+  final FinanceService svc;
+  const _AccountDistribution({required this.svc});
+
+  @override
+  Widget build(BuildContext context) {
+    final shares = svc.accountDistribution;
+    final byCurrency = svc.balanceByCurrency;
+    final maxV = shares.fold<double>(
+        0, (m, s) => s.inBase.abs() > m ? s.inBase.abs() : m);
+
+    // Colour is keyed to the account's stable position in the account list, so
+    // re-sorting the bars by balance never repaints them.
+    final order = {
+      for (final (i, a) in svc.allAccounts.indexed) a.id: i,
+    };
+
+    return _ChartCard(
+      icon: Icons.account_balance_wallet_outlined,
+      title: 'Where Your Money Sits',
+      subtitle: 'Converted to ${svc.baseCurrency}',
+      child: shares.isEmpty
+          ? const _InlineEmpty(message: 'No account holds a balance yet.')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ...shares.map((s) {
+                  final frac = maxV > 0 ? (s.inBase.abs() / maxV) : 0.0;
+                  final color = ChartPalette
+                      .ordered[(order[s.account.id] ?? 0) % 8];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(s.account.name,
+                                  style: bodyStyle(13,
+                                      weight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                            Text(
+                              // Native amount first — that's what the user
+                              // actually holds.
+                              '${s.account.currency} '
+                              '${NumberFormat('#,##0.00').format(s.native)}',
+                              style: bodyStyle(13, weight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: frac,
+                            minHeight: 6,
+                            backgroundColor:
+                                MysticColors.outlineVariant.withOpacity(0.22),
+                            color: color,
+                          ),
+                        ),
+                        if (s.account.currency != svc.baseCurrency) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            '≈ ${_money(svc.baseCurrency, s.inBase)}',
+                            style: labelStyle(9,
+                                letterSpacing: 0.3,
+                                color: MysticColors.onSurfaceVariant
+                                    .withOpacity(0.6)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+                if (byCurrency.length > 1) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                      height: 1,
+                      color: MysticColors.outlineVariant.withOpacity(0.2)),
+                  const SizedBox(height: 10),
+                  Text('HOLDINGS BY CURRENCY',
+                      style: labelStyle(9,
+                          letterSpacing: 1.5,
+                          color: MysticColors.onSurfaceVariant
+                              .withOpacity(0.7))),
+                  const SizedBox(height: 8),
+                  ...byCurrency.entries.map((e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(e.key,
+                                style:
+                                    bodyStyle(12, weight: FontWeight.w700)),
+                            Text(
+                              NumberFormat('#,##0.00').format(e.value),
+                              style: bodyStyle(12,
+                                  color: MysticColors.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      )),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+// ── Shared chrome ─────────────────────────────────────────────────────────────
+
+class _ChartCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<Widget>? legend;
+  final Widget child;
+
+  const _ChartCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.legend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: MysticColors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
         border:
-            Border.all(color: MysticColors.outlineVariant.withOpacity(0.12)),
+            Border.all(color: MysticColors.outlineVariant.withOpacity(0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.bar_chart_rounded,
-                  color: MysticColors.primary, size: 20),
+              Icon(icon, color: MysticColors.primary, size: 19),
               const SizedBox(width: 8),
-              Text('Income vs Expenses',
-                  style: headlineStyle(18, italic: false, weight: FontWeight.w800)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text('Last 6 months',
-              style: labelStyle(10,
-                  letterSpacing: 1.2,
-                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
-          const SizedBox(height: 20),
-          // Legend
-          Row(
-            children: [
-              _LegendDot(color: MysticColors.secondary, label: 'Income'),
-              const SizedBox(width: 16),
-              _LegendDot(color: MysticColors.tertiary, label: 'Expenses'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 180,
-            child: BarChart(
-              BarChartData(
-                maxY: yMax,
-                minY: 0,
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: yMax / 4,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: MysticColors.onSurface.withOpacity(0.07),
-                    strokeWidth: 1,
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 48,
-                      interval: yMax / 4,
-                      getTitlesWidget: (val, meta) {
-                        if (val == 0 || val == meta.max) return const SizedBox.shrink();
-                        final label = val >= 1000
-                            ? '${(val / 1000).toStringAsFixed(0)}k'
-                            : val.toStringAsFixed(0);
-                        return Text(label,
-                            style: labelStyle(9,
-                                color: MysticColors.onSurfaceVariant
-                                    .withOpacity(0.6)));
-                      },
-                    ),
-                  ),
-                  rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 24,
-                      getTitlesWidget: (val, _) {
-                        final idx = val.toInt();
-                        if (idx < 0 || idx >= months.length) {
-                          return const SizedBox.shrink();
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            DateFormat('MMM').format(months[idx].month),
-                            style: labelStyle(9,
-                                color: MysticColors.onSurfaceVariant
-                                    .withOpacity(0.7)),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                barGroups: months.asMap().entries.map((e) {
-                  return BarChartGroupData(
-                    x: e.key,
-                    barRods: [
-                      BarChartRodData(
-                        toY: e.value.income,
-                        color: MysticColors.secondary,
-                        width: 10,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(4),
-                          topRight: Radius.circular(4),
-                        ),
-                      ),
-                      BarChartRodData(
-                        toY: e.value.expenses,
-                        color: MysticColors.tertiary,
-                        width: 10,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(4),
-                          topRight: Radius.circular(4),
-                        ),
-                      ),
-                    ],
-                    barsSpace: 4,
-                  );
-                }).toList(),
-                barTouchData: BarTouchData(
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) =>
-                        MysticColors.surfaceContainerHighest.withOpacity(0.95),
-                    tooltipRoundedRadius: 10,
-                    getTooltipItem: (group, _, rod, rodIdx) {
-                      final label = rodIdx == 0 ? 'Income' : 'Expenses';
-                      return BarTooltipItem(
-                        '$label\nETB ${NumberFormat('#,##0').format(rod.toY)}',
-                        bodyStyle(12,
-                            weight: FontWeight.w600,
-                            color: rodIdx == 0
-                                ? MysticColors.secondary
-                                : MysticColors.tertiary),
-                      );
-                    },
-                  ),
-                ),
+              Expanded(
+                child: Text(title,
+                    style: headlineStyle(18,
+                        italic: false, weight: FontWeight.w800)),
               ),
-            ),
+            ],
           ),
+          const SizedBox(height: 4),
+          Text(subtitle,
+              style: labelStyle(10,
+                  letterSpacing: 1.0,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.65))),
+          if (legend != null) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                for (var i = 0; i < legend!.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 16),
+                  legend![i],
+                ],
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          child,
         ],
       ),
     );
@@ -327,8 +1083,8 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 10,
-          height: 10,
+          width: 9,
+          height: 9,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
@@ -340,396 +1096,48 @@ class _LegendDot extends StatelessWidget {
   }
 }
 
-// ── Category donut chart ──────────────────────────────────────────────────────
-
-class _CategoryDonut extends StatefulWidget {
-  final FinanceService svc;
-  const _CategoryDonut({required this.svc});
-
-  @override
-  State<_CategoryDonut> createState() => _CategoryDonutState();
-}
-
-class _CategoryDonutState extends State<_CategoryDonut> {
-  int _touchedIndex = -1;
-
-  static const _palette = [
-    MysticColors.primary,
-    MysticColors.secondary,
-    MysticColors.tertiary,
-    Color(0xFF8D6E63),
-    Color(0xFF5C6BC0),
-    Color(0xFF26A69A),
-    Color(0xFFEF9A9A),
-    Color(0xFFFFA726),
-  ];
+class _InlineEmpty extends StatelessWidget {
+  final String message;
+  const _InlineEmpty({required this.message});
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.svc.expensesByCategory;
-    if (data.isEmpty) return const SizedBox.shrink();
-
-    final sorted = data.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final total = sorted.fold(0.0, (s, e) => s + e.value);
-    final fmt = NumberFormat('#,##0.00');
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: MysticColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-        border:
-            Border.all(color: MysticColors.outlineVariant.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.donut_large_rounded,
-                  color: MysticColors.primary, size: 20),
-              const SizedBox(width: 8),
-              Text('Spending by Category',
-                  style: headlineStyle(18,
-                      italic: false, weight: FontWeight.w800)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text('Where did your money go?',
-              style: labelStyle(10,
-                  letterSpacing: 1.2,
-                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
-          const SizedBox(height: 24),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Donut
-              SizedBox(
-                width: 140,
-                height: 140,
-                child: PieChart(
-                  PieChartData(
-                    pieTouchData: PieTouchData(
-                      touchCallback: (event, response) {
-                        setState(() {
-                          if (!event.isInterestedForInteractions ||
-                              response?.touchedSection == null) {
-                            _touchedIndex = -1;
-                          } else {
-                            _touchedIndex =
-                                response!.touchedSection!.touchedSectionIndex;
-                          }
-                        });
-                      },
-                    ),
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 38,
-                    sections: sorted.asMap().entries.map((e) {
-                      final isTouched = e.key == _touchedIndex;
-                      final pct = total > 0 ? e.value.value / total : 0;
-                      final color = _palette[e.key % _palette.length];
-                      return PieChartSectionData(
-                        value: e.value.value,
-                        color: color,
-                        radius: isTouched ? 38 : 30,
-                        title: pct > 0.08
-                            ? '${(pct * 100).toStringAsFixed(0)}%'
-                            : '',
-                        titleStyle: labelStyle(9,
-                            color: Colors.white, letterSpacing: 0.3),
-                        badgeWidget: null,
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 20),
-              // Legend
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: sorted.asMap().entries.map((e) {
-                    final color = _palette[e.key % _palette.length];
-                    final pct = total > 0
-                        ? (e.value.value / total * 100).toStringAsFixed(0)
-                        : '0';
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                                color: color, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _catLabel(e.value.key),
-                              style: bodyStyle(12,
-                                  weight: FontWeight.w600,
-                                  color: MysticColors.onSurface),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            '$pct%',
-                            style: labelStyle(10,
-                                letterSpacing: 0.3,
-                                color: MysticColors.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-              height: 1,
-              color: MysticColors.outlineVariant.withOpacity(0.15)),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('TOTAL EXPENSES',
-                  style: labelStyle(10,
-                      letterSpacing: 1.5,
-                      color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
-              Text('ETB ${fmt.format(total)}',
-                  style: bodyStyle(15,
-                      weight: FontWeight.w700, color: MysticColors.tertiary)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _catLabel(TransactionCategory cat) {
-    switch (cat) {
-      case TransactionCategory.food:          return 'Food';
-      case TransactionCategory.transport:     return 'Transport';
-      case TransactionCategory.utilities:     return 'Utilities';
-      case TransactionCategory.entertainment: return 'Entertainment';
-      case TransactionCategory.tithe:         return 'Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Freelance';
-      case TransactionCategory.other:         return 'Other';
-    }
-  }
-}
-
-// ── Top expenditures ──────────────────────────────────────────────────────────
-
-class _TopExpenditures extends StatelessWidget {
-  final FinanceService svc;
-  const _TopExpenditures({required this.svc});
-
-  @override
-  Widget build(BuildContext context) {
-    final byCategory = svc.expensesByCategory;
-    if (byCategory.isEmpty) return const SizedBox.shrink();
-
-    final sorted = byCategory.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final top = sorted.take(5).toList();
-    final total = svc.totalExpenses;
-    final fmt = NumberFormat('#,##0.00');
-
-    final counts = <TransactionCategory, int>{};
-    for (final t in svc.transactions) {
-      if (t.type == TransactionType.expense) {
-        counts[t.category] = (counts[t.category] ?? 0) + 1;
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('TOP EXPENDITURES',
-            style: labelStyle(10,
-                letterSpacing: 2.0,
-                color: MysticColors.onSurface.withOpacity(0.5))),
-        const SizedBox(height: 16),
-        Container(
-          decoration: BoxDecoration(
-            color: MysticColors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-                color: MysticColors.outlineVariant.withOpacity(0.12)),
-          ),
-          child: Column(
-            children: top.asMap().entries.map((e) {
-              final cat = e.value.key;
-              final amount = e.value.value;
-              final pct = total > 0
-                  ? ((amount / total) * 100).toStringAsFixed(0)
-                  : '0';
-              final count = counts[cat] ?? 0;
-              final isLast = e.key == top.length - 1;
-
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: isLast
-                    ? null
-                    : BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                              color:
-                                  MysticColors.outlineVariant.withOpacity(0.15)),
-                        ),
-                      ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: MysticColors.primaryContainer.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(_catIcon(cat),
-                          color: MysticColors.primary, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_catLabel(cat),
-                              style: bodyStyle(14, weight: FontWeight.w700)),
-                          const SizedBox(height: 2),
-                          // Progress bar
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: total > 0 ? amount / total : 0,
-                              minHeight: 4,
-                              backgroundColor:
-                                  MysticColors.outlineVariant.withOpacity(0.2),
-                              color: MysticColors.tertiary.withOpacity(0.7),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '$count transaction${count != 1 ? 's' : ''}',
-                            style: labelStyle(9,
-                                color: MysticColors.onSurfaceVariant
-                                    .withOpacity(0.5)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('ETB ${fmt.format(amount)}',
-                            style: bodyStyle(14,
-                                weight: FontWeight.w700,
-                                color: MysticColors.tertiary)),
-                        Text('$pct%',
-                            style: labelStyle(10,
-                                letterSpacing: 0.5,
-                                color:
-                                    MysticColors.onSurface.withOpacity(0.4))),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: bodyStyle(12,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.7))
+              .copyWith(fontStyle: FontStyle.italic),
         ),
-      ],
+      ),
     );
-  }
-
-  String _catLabel(TransactionCategory cat) {
-    switch (cat) {
-      case TransactionCategory.food:          return 'Daily Sustenance';
-      case TransactionCategory.transport:     return 'Carriage & Stable';
-      case TransactionCategory.utilities:     return 'The Hearth';
-      case TransactionCategory.entertainment: return 'Vices & Joy';
-      case TransactionCategory.tithe:         return 'Sacred Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Grimoire Sales';
-      case TransactionCategory.other:         return 'Miscellany';
-    }
-  }
-
-  IconData _catIcon(TransactionCategory cat) {
-    switch (cat) {
-      case TransactionCategory.food:          return Icons.restaurant_outlined;
-      case TransactionCategory.transport:     return Icons.directions_car_outlined;
-      case TransactionCategory.utilities:     return Icons.home_outlined;
-      case TransactionCategory.entertainment: return Icons.celebration_outlined;
-      case TransactionCategory.tithe:         return Icons.volunteer_activism;
-      case TransactionCategory.salary:        return Icons.work_outline;
-      case TransactionCategory.freelance:     return Icons.auto_stories_outlined;
-      case TransactionCategory.other:         return Icons.category_outlined;
-    }
   }
 }
 
-// ── Insight footer ────────────────────────────────────────────────────────────
-
-class _InsightFooter extends StatelessWidget {
-  final FinanceService svc;
-  const _InsightFooter({required this.svc});
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  const _EmptyState({required this.icon, required this.message});
 
   @override
   Widget build(BuildContext context) {
-    final byCategory = svc.expensesByCategory;
-    if (byCategory.isEmpty) return const SizedBox.shrink();
-
-    final topCat = (byCategory.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)))
-        .first
-        .key;
-
-    final label = switch (topCat) {
-      TransactionCategory.food          => 'Sustenance',
-      TransactionCategory.transport     => 'Carriage',
-      TransactionCategory.utilities     => 'The Hearth',
-      TransactionCategory.entertainment => 'Vices & Joy',
-      _                                 => 'Tithe',
-    };
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Stack(
-          clipBehavior: Clip.none,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 60),
+      child: Center(
+        child: Column(
           children: [
-            Positioned(
-              top: -8,
-              left: -8,
-              child: Transform.rotate(
-                angle: -0.26,
-                child: Icon(Icons.star,
-                    color: MysticColors.primary.withOpacity(0.4), size: 20),
-              ),
-            ),
+            Icon(icon, size: 56, color: MysticColors.outlineVariant),
+            const SizedBox(height: 14),
             Text(
-              '"The stars suggest your gold flows most freely toward $label this moon."',
+              message,
               textAlign: TextAlign.center,
-              style: bodyStyle(13, color: MysticColors.onSurface.withOpacity(0.7))
-                  .copyWith(fontStyle: FontStyle.italic),
-            ),
-            Positioned(
-              bottom: -8,
-              right: -8,
-              child: Transform.rotate(
-                angle: 0.26,
-                child: Icon(Icons.auto_awesome,
-                    color: MysticColors.primary.withOpacity(0.4), size: 20),
-              ),
+              style: headlineStyle(15,
+                  italic: true,
+                  weight: FontWeight.w600,
+                  color: MysticColors.outline),
             ),
           ],
         ),

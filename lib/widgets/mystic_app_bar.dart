@@ -27,7 +27,7 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
         padding: const EdgeInsets.only(left: 8),
         child: Builder(
           builder: (ctx) => IconButton(
-            icon: Icon(Icons.menu, color: MysticColors.primary),
+            icon: const Icon(Icons.menu, color: MysticColors.primary),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
@@ -72,7 +72,7 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
                               weight: FontWeight.w800,
                               color: MysticColors.primary),
                         )
-                      : Icon(
+                      : const Icon(
                           Icons.person_outline,
                           color: MysticColors.onSurfaceVariant,
                           size: 20,

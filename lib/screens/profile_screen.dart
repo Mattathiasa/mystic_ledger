@@ -178,7 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.logout,
+                        const Icon(Icons.logout,
                             color: MysticColors.tertiary, size: 20),
                         const SizedBox(width: 10),
                         Text(
@@ -310,7 +310,7 @@ class _AvatarCard extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.edit_outlined, size: 16, color: Colors.white),
+                  const Icon(Icons.edit_outlined, size: 16, color: Colors.white),
                   const SizedBox(width: 8),
                   Text('Edit Profile',
                       style: labelStyle(11,
@@ -331,7 +331,9 @@ class _AvatarCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'ETB ${fmt.format(svc.totalBalance)}',
+            svc.totalHidden
+                ? '••••••'
+                : '${svc.baseCurrency} ${fmt.format(svc.totalBalance)}',
             style: headlineStyle(32,
                 italic: false,
                 weight: FontWeight.w900,
@@ -507,7 +509,7 @@ class _StatsRow extends StatelessWidget {
         Expanded(
           child: _StatCard(
             label: 'INCOME',
-            value: 'ETB ${fmt.format(svc.totalIncome)}',
+            value: '${svc.baseCurrency} ${fmt.format(svc.totalIncome)}',
             color: MysticColors.secondary,
           ),
         ),
@@ -515,7 +517,7 @@ class _StatsRow extends StatelessWidget {
         Expanded(
           child: _StatCard(
             label: 'EXPENSES',
-            value: 'ETB ${fmt.format(svc.totalExpenses)}',
+            value: '${svc.baseCurrency} ${fmt.format(svc.totalExpenses)}',
             color: MysticColors.tertiary,
           ),
         ),
@@ -523,7 +525,9 @@ class _StatsRow extends StatelessWidget {
         Expanded(
           child: _StatCard(
             label: 'SAVINGS',
-            value: 'ETB ${fmt.format(svc.totalSavings)}',
+            // Savings sits in its own account, so it carries that currency.
+            value: '${svc.currencyOf(FinanceService.idSavings)} '
+                '${fmt.format(svc.totalSavings)}',
             color: MysticColors.primary,
           ),
         ),

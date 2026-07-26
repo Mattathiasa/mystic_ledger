@@ -60,6 +60,7 @@ class BudgetScreen extends StatelessWidget {
                           budget: b,
                           spent: svc.spentInPeriod(b),
                           fmt: fmt,
+                          currency: svc.baseCurrency,
                           onDelete: () => svc.deleteBudget(b.id),
                         ),
                       )),
@@ -133,12 +134,15 @@ class _BudgetCard extends StatelessWidget {
   final Budget budget;
   final double spent;
   final NumberFormat fmt;
+  /// Budgets and their spend are expressed in the base currency.
+  final String currency;
   final VoidCallback onDelete;
 
   const _BudgetCard({
     required this.budget,
     required this.spent,
     required this.fmt,
+    required this.currency,
     required this.onDelete,
   });
 
@@ -255,7 +259,7 @@ class _BudgetCard extends StatelessWidget {
                   Text('SPENT', style: labelStyle(8, letterSpacing: 1.2)),
                   const SizedBox(height: 2),
                   Text(
-                    'ETB ${fmt.format(spent)}',
+                    '$currency ${fmt.format(spent)}',
                     style: bodyStyle(16, weight: FontWeight.w700,
                         color: progressColor),
                   ),
@@ -267,7 +271,7 @@ class _BudgetCard extends StatelessWidget {
                   Text('BUDGET', style: labelStyle(8, letterSpacing: 1.2)),
                   const SizedBox(height: 2),
                   Text(
-                    'ETB ${fmt.format(budget.amount)}',
+                    '$currency ${fmt.format(budget.amount)}',
                     style: bodyStyle(16, weight: FontWeight.w700),
                   ),
                 ],
@@ -294,8 +298,8 @@ class _BudgetCard extends StatelessWidget {
           // Remaining / over label
           Text(
             overBudget
-                ? 'Over budget by ETB ${fmt.format(spent - budget.amount)}'
-                : 'ETB ${fmt.format(remaining)} remaining',
+                ? 'Over budget by $currency ${fmt.format(spent - budget.amount)}'
+                : '$currency ${fmt.format(remaining)} remaining',
             style: bodyStyle(12,
                 color: overBudget
                     ? MysticColors.tertiary
@@ -484,7 +488,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
             const SizedBox(height: 24),
 
             // Amount field
-            Text('BUDGET AMOUNT (ETB)',
+            Text('BUDGET AMOUNT (${context.read<FinanceService>().baseCurrency})',
                 style: labelStyle(9,
                     letterSpacing: 1.5,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -502,7 +506,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
                     .copyWith(
                         color: MysticColors.onSurface.withOpacity(0.2)),
                 prefix: Text(
-                  'ETB  ',
+                  '${context.read<FinanceService>().baseCurrency}  ',
                   style: labelStyle(12,
                       letterSpacing: 0.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.5)),

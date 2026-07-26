@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../models/account_model.dart';
+import '../models/app_settings.dart';
+import '../models/currency_model.dart';
 
 /// Handles reading and writing user profile data in Firestore.
 class UserService {
@@ -16,6 +18,7 @@ class UserService {
     required String uid,
     required String name,
     required String email,
+    String baseCurrency = Currency.defaultCode,
   }) async {
     final batch = _db.batch();
     final userRef = _users.doc(uid);
@@ -29,12 +32,13 @@ class UserService {
     );
     batch.set(userRef, user.toMap());
 
-    // Default accounts
+    // Default accounts. Any the user doesn't have can be removed later from
+    // Manage Accounts (soft-delete) and restored again.
     final defaults = [
-      Account(id: 'telebirr', name: 'Telebirr',     type: AccountType.mobile),
-      Account(id: 'cash',     name: 'Cash On Hand',  type: AccountType.cash),
-      Account(id: 'cbe',      name: 'CBE Bank',      type: AccountType.bank),
-      Account(id: 'savings',  name: 'Savings Vault', type: AccountType.savings),
+      Account(id: 'telebirr', name: 'Telebirr',      type: AccountType.mobile,  currency: baseCurrency),
+      Account(id: 'cash',     name: 'Cash On Hand',  type: AccountType.cash,    currency: baseCurrency),
+      Account(id: 'cbe',      name: 'CBE Bank',      type: AccountType.bank,    currency: baseCurrency),
+      Account(id: 'savings',  name: 'Savings Vault', type: AccountType.savings, currency: baseCurrency),
     ];
     for (final acc in defaults) {
       batch.set(
@@ -42,6 +46,12 @@ class UserService {
         acc.toMap(),
       );
     }
+
+    // Seed the settings doc so base currency is explicit from day one.
+    batch.set(
+      userRef.collection('settings').doc('prefs'),
+      AppSettings(baseCurrency: baseCurrency).toMap(),
+    );
 
     await batch.commit();
   }

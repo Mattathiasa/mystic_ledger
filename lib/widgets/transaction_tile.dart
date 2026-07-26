@@ -97,7 +97,8 @@ class TransactionTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${isIncome ? '+' : '-'}ETB ${amtFmt.format(transaction.amount)}',
+                '${isIncome ? '+' : '-'}${transaction.currency} '
+                '${amtFmt.format(transaction.amount)}',
                 style: bodyStyle(
                   14,
                   weight: FontWeight.w700,

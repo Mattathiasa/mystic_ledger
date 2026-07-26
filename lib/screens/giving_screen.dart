@@ -1,16 +1,19 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
-
-enum GivingPeriod { total, monthly, weekly }
+import '../models/account_model.dart';
+import '../models/transaction.dart';
 
 /// Tab 3 — Sacred Giving.
-/// Shows income and the 10% tithe for the selected period,
-/// with options for all-time, monthly, or weekly (Sunday church).
+///
+/// Tithe is calculated as income for the period × the configured rate, minus
+/// what has already been given in that same period. Giving is recorded as a
+/// real expense entry, which is what makes "already given" meaningful.
 class GivingScreen extends StatefulWidget {
   const GivingScreen({super.key});
 
@@ -19,21 +22,13 @@ class GivingScreen extends StatefulWidget {
 }
 
 class _GivingScreenState extends State<GivingScreen> {
-  GivingPeriod _period = GivingPeriod.total;
+  LedgerPeriod _period = LedgerPeriod.all;
 
   String get _periodLabel {
     switch (_period) {
-      case GivingPeriod.total:   return 'ALL TIME';
-      case GivingPeriod.monthly: return 'THIS MONTH';
-      case GivingPeriod.weekly:  return 'THIS WEEK';
-    }
-  }
-
-  double _income(FinanceService svc) {
-    switch (_period) {
-      case GivingPeriod.total:   return svc.totalIncome;
-      case GivingPeriod.monthly: return svc.monthlyIncome;
-      case GivingPeriod.weekly:  return svc.weeklyIncome;
+      case LedgerPeriod.week:  return 'THIS WEEK';
+      case LedgerPeriod.month: return 'THIS MONTH';
+      default:                 return 'ALL TIME';
     }
   }
 
@@ -44,8 +39,17 @@ class _GivingScreenState extends State<GivingScreen> {
       appBar: const MysticAppBar(),
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
-          final income = _income(svc);
-          final tithe = income * 0.1;
+          if (svc.isLoading) {
+            return const Center(
+                child: CircularProgressIndicator(color: MysticColors.primary));
+          }
+
+          final income     = svc.incomeIn(_period);
+          final obligation = svc.titheObligation(_period);
+          final given      = svc.titheGiven(_period);
+          final remaining  = svc.titheRemaining(_period);
+          final progress   = svc.titheProgress(_period);
+
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 32, 24, 100),
             child: Column(
@@ -58,20 +62,29 @@ class _GivingScreenState extends State<GivingScreen> {
                   onChanged: (p) => setState(() => _period = p),
                 ),
                 const SizedBox(height: 24),
-                _IncomeCard(income: income, periodLabel: _periodLabel),
+                _IncomeCard(
+                  income: income,
+                  currency: svc.baseCurrency,
+                  periodLabel: _periodLabel,
+                ),
                 const SizedBox(height: 16),
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: _TitheCard(tithe: tithe, period: _period)),
-                      const SizedBox(width: 16),
-                      const Expanded(child: _CommitmentCard()),
-                    ],
-                  ),
+                _TitheBreakdown(
+                  obligation: obligation,
+                  given: given,
+                  remaining: remaining,
+                  progress: progress,
+                  rate: svc.titheRate,
+                  currency: svc.baseCurrency,
+                  period: _period,
+                  onEditRate: () => _editRate(svc),
+                  onGive: remaining > 0 ? () => _give(svc, remaining) : null,
                 ),
                 const SizedBox(height: 24),
-                const _ArchivistNote(),
+                _ArchivistNote(
+                  given: given,
+                  remaining: remaining,
+                  currency: svc.baseCurrency,
+                ),
               ],
             ),
           );
@@ -79,13 +92,77 @@ class _GivingScreenState extends State<GivingScreen> {
       ),
     );
   }
+
+  /// Records the tithe as a real expense so it counts against the obligation.
+  Future<void> _give(FinanceService svc, double suggested) async {
+    final accounts = svc.spendableAccounts;
+    if (accounts.isEmpty) {
+      _snack('You need an account before you can record giving.',
+          MysticColors.tertiary);
+      return;
+    }
+
+    final result = await showModalBottomSheet<_GiveResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _GiveSheet(
+        suggested: suggested,
+        accounts: accounts,
+        svc: svc,
+      ),
+    );
+    if (result == null) return;
+
+    final currency = svc.currencyOf(result.accountId);
+    await svc.addTransaction(
+      Transaction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: 'Tithe',
+        amount: result.amount,
+        type: TransactionType.expense,
+        category: TransactionCategory.tithe,
+        accountId: result.accountId,
+        date: DateTime.now(),
+        currency: currency,
+        rateToBase: svc.settings.rateFor(currency),
+      ),
+    );
+    if (!mounted) return;
+    _snack('Recorded — your giving is now in the ledger.',
+        MysticColors.secondary);
+  }
+
+  Future<void> _editRate(FinanceService svc) async {
+    final rate = await showDialog<double>(
+      context: context,
+      builder: (_) => _RateDialog(current: svc.titheRate),
+    );
+    if (rate == null) return;
+    await svc.setTitheRate(rate);
+  }
+
+  void _snack(String msg, Color bg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+      backgroundColor: bg,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+  }
+}
+
+class _GiveResult {
+  final double amount;
+  final String accountId;
+  const _GiveResult(this.amount, this.accountId);
 }
 
 // ── Period toggle ─────────────────────────────────────────────────────────────
 
 class _PeriodToggle extends StatelessWidget {
-  final GivingPeriod selected;
-  final ValueChanged<GivingPeriod> onChanged;
+  final LedgerPeriod selected;
+  final ValueChanged<LedgerPeriod> onChanged;
   const _PeriodToggle({required this.selected, required this.onChanged});
 
   @override
@@ -102,20 +179,20 @@ class _PeriodToggle extends StatelessWidget {
           _Tab(
             label: 'All Time',
             icon: Icons.all_inclusive,
-            active: selected == GivingPeriod.total,
-            onTap: () => onChanged(GivingPeriod.total),
+            active: selected == LedgerPeriod.all,
+            onTap: () => onChanged(LedgerPeriod.all),
           ),
           _Tab(
             label: 'Monthly',
             icon: Icons.calendar_month_outlined,
-            active: selected == GivingPeriod.monthly,
-            onTap: () => onChanged(GivingPeriod.monthly),
+            active: selected == LedgerPeriod.month,
+            onTap: () => onChanged(LedgerPeriod.month),
           ),
           _Tab(
             label: 'Weekly (Sunday)',
             icon: Icons.church_outlined,
-            active: selected == GivingPeriod.weekly,
-            onTap: () => onChanged(GivingPeriod.weekly),
+            active: selected == LedgerPeriod.week,
+            onTap: () => onChanged(LedgerPeriod.week),
           ),
         ],
       ),
@@ -198,8 +275,13 @@ class _GivingHeader extends StatelessWidget {
 
 class _IncomeCard extends StatelessWidget {
   final double income;
+  final String currency;
   final String periodLabel;
-  const _IncomeCard({required this.income, required this.periodLabel});
+  const _IncomeCard({
+    required this.income,
+    required this.currency,
+    required this.periodLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -219,17 +301,17 @@ class _IncomeCard extends StatelessWidget {
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
-            BoxShadow(
+            const BoxShadow(
               color: MysticColors.surfaceContainerLow,
               blurRadius: 0,
-              offset: const Offset(0, 10),
+              offset: Offset(0, 10),
               spreadRadius: -5,
             ),
           ],
         ),
         child: Stack(
           children: [
-            Positioned(
+            const Positioned(
               right: 0,
               top: 0,
               child: Opacity(
@@ -250,18 +332,18 @@ class _IncomeCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'ETB ${fmt.format(income)}',
+                        '$currency ${fmt.format(income)}',
                         style: headlineStyle(38,
                             italic: false, weight: FontWeight.w900),
                       ),
                     ),
-                    Icon(Icons.north_east,
+                    const Icon(Icons.north_east,
                         color: MysticColors.secondary, size: 24),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '"The ledger reflects a prosperous season. All ink points toward abundance."',
+                  'Income recorded for this period — the basis for your tithe.',
                   style: bodyStyle(13,
                           color: MysticColors.onSurfaceVariant)
                       .copyWith(fontStyle: FontStyle.italic),
@@ -277,21 +359,46 @@ class _IncomeCard extends StatelessWidget {
 
 // ── Tithe calculation card ────────────────────────────────────────────────────
 
-class _TitheCard extends StatelessWidget {
-  final double tithe;
-  final GivingPeriod period;
-  const _TitheCard({required this.tithe, required this.period});
+class _TitheBreakdown extends StatelessWidget {
+  final double obligation;
+  final double given;
+  final double remaining;
+  final double progress;
+  final double rate;
+  final String currency;
+  final LedgerPeriod period;
+  final VoidCallback onEditRate;
+  /// Null when nothing is outstanding.
+  final VoidCallback? onGive;
+
+  const _TitheBreakdown({
+    required this.obligation,
+    required this.given,
+    required this.remaining,
+    required this.progress,
+    required this.rate,
+    required this.currency,
+    required this.period,
+    required this.onEditRate,
+    required this.onGive,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat('#,##0.00');
+    final fmt        = NumberFormat('#,##0.00');
+    final settled    = remaining <= 0;
+    final ratePct    = (rate * 100);
+    final rateLabel  = ratePct == ratePct.roundToDouble()
+        ? '${ratePct.toStringAsFixed(0)}%'
+        : '${ratePct.toStringAsFixed(1)}%';
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: MysticColors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-            color: MysticColors.outlineVariant.withOpacity(0.2)),
+        border:
+            Border.all(color: MysticColors.outlineVariant.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
             color: MysticColors.onSurface.withOpacity(0.04),
@@ -304,7 +411,6 @@ class _TitheCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
                 width: 44,
@@ -313,80 +419,147 @@ class _TitheCard extends StatelessWidget {
                   color: MysticColors.primaryContainer.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                transform: Matrix4.rotationZ(-0.052), // -3 deg
+                transform: Matrix4.rotationZ(-0.052),
                 transformAlignment: Alignment.center,
                 child: const Icon(Icons.volunteer_activism,
                     color: MysticColors.primary, size: 22),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: MysticColors.primary,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Text(
-                    period == GivingPeriod.weekly ? 'SUNDAY OFFERING' : '10% TITHE',
-                    style: labelStyle(9,
-                        letterSpacing: 1.5,
-                        color: MysticColors.onPrimary)),
+                  period == LedgerPeriod.week
+                      ? 'Sunday Offering'
+                      : 'Tithe',
+                  style: headlineStyle(20,
+                      italic: true, weight: FontWeight.w800),
+                ),
+              ),
+              // Rate is editable — 10% is a default, not a rule.
+              GestureDetector(
+                onTap: onEditRate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: MysticColors.primary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(rateLabel,
+                          style: labelStyle(9,
+                              letterSpacing: 1.2,
+                              color: MysticColors.onPrimary)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.edit,
+                          size: 10, color: MysticColors.onPrimary),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text('CALCULATED PORTION',
-              style: labelStyle(9,
-                  letterSpacing: 1.5,
-                  color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
-          const SizedBox(height: 4),
-          Text(
-            'ETB ${fmt.format(tithe)}',
-            style: headlineStyle(28,
-                italic: false,
-                weight: FontWeight.w900,
-                color: MysticColors.primary),
+
+          const SizedBox(height: 20),
+
+          _Line(
+            label: 'OBLIGATION',
+            value: '$currency ${fmt.format(obligation)}',
+            color: MysticColors.onSurface,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
+          _Line(
+            label: 'ALREADY GIVEN',
+            value: '− $currency ${fmt.format(given)}',
+            color: MysticColors.secondary,
+          ),
+          const SizedBox(height: 12),
           Container(
-            height: 1,
-            color: MysticColors.outlineVariant.withOpacity(0.2),
+              height: 1, color: MysticColors.outlineVariant.withOpacity(0.25)),
+          const SizedBox(height: 12),
+          _Line(
+            label: 'REMAINING',
+            value: '$currency ${fmt.format(remaining)}',
+            color: settled ? MysticColors.secondary : MysticColors.primary,
+            emphasise: true,
           ),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 20),
+
+          // Progress
+          Row(
+            children: [
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: CustomPaint(
+                  painter: _ProgressRingPainter(
+                    progress: progress,
+                    track: MysticColors.outlineVariant.withOpacity(0.3),
+                    arc: settled
+                        ? MysticColors.secondary
+                        : MysticColors.primary,
+                  ),
+                  child: Center(
+                    child: settled
+                        ? const Icon(Icons.check,
+                            color: MysticColors.secondary, size: 22)
+                        : Text('${(progress * 100).round()}%',
+                            style: labelStyle(11,
+                                letterSpacing: 0,
+                                color: MysticColors.primary)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  settled
+                      ? (obligation <= 0
+                          ? 'No income recorded for this period yet.'
+                          : 'Fulfilled for this period.')
+                      : '${(progress * 100).round()}% fulfilled — '
+                          '$currency ${fmt.format(remaining)} still owed.',
+                  style: bodyStyle(13,
+                      color: MysticColors.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Tithe transfer recorded — Blessings upon the archive!',
-                      style: bodyStyle(13, color: Colors.white),
-                    ),
-                    backgroundColor: MysticColors.secondary,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                );
-              },
+              onPressed: onGive,
               style: ElevatedButton.styleFrom(
                 backgroundColor: MysticColors.primary,
                 foregroundColor: MysticColors.onPrimary,
+                disabledBackgroundColor:
+                    MysticColors.onSurface.withOpacity(0.08),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
-                elevation: 2,
+                elevation: onGive == null ? 0 : 2,
                 shadowColor: MysticColors.primary.withOpacity(0.3),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Initiate Transfer',
-                      style: headlineStyle(14,
-                          italic: false, weight: FontWeight.w700,
-                          color: MysticColors.onPrimary)),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.arrow_forward, size: 16),
+                  Text(
+                    settled ? 'Nothing outstanding' : 'Record Giving',
+                    style: headlineStyle(14,
+                        italic: false,
+                        weight: FontWeight.w700,
+                        color: onGive == null
+                            ? MysticColors.onSurfaceVariant.withOpacity(0.5)
+                            : MysticColors.onPrimary),
+                  ),
+                  if (onGive != null) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward, size: 16),
+                  ],
                 ],
               ),
             ),
@@ -397,95 +570,36 @@ class _TitheCard extends StatelessWidget {
   }
 }
 
-// ── Commitment / progress card ────────────────────────────────────────────────
-
-class _CommitmentCard extends StatelessWidget {
-  const _CommitmentCard();
+class _Line extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final bool emphasise;
+  const _Line({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.emphasise = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: 0.009, // +0.5 deg
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: MysticColors.primary,
-          borderRadius: BorderRadius.circular(28),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(label,
+            style: labelStyle(9,
+                letterSpacing: 1.5,
+                color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
+        Text(
+          value,
+          style: emphasise
+              ? headlineStyle(24,
+                  italic: false, weight: FontWeight.w900, color: color)
+              : bodyStyle(16, weight: FontWeight.w700, color: color),
         ),
-        child: Stack(
-          children: [
-            // Decorative bubble icon bottom-right
-            Positioned(
-              bottom: -12,
-              right: -12,
-              child: Opacity(
-                opacity: 0.15,
-                child: Icon(Icons.bubble_chart,
-                    size: 140, color: Colors.white),
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Commitment',
-                        style: headlineStyle(18,
-                            italic: true,
-                            weight: FontWeight.w700,
-                            color: Colors.white)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'COMPLETION STATUS',
-                      style: labelStyle(9,
-                          letterSpacing: 1.2,
-                          color: Colors.white.withOpacity(0.8)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    // Progress ring
-                    SizedBox(
-                      width: 72,
-                      height: 72,
-                      child: CustomPaint(
-                        painter: _ProgressRingPainter(progress: 1.0),
-                        child: const Center(
-                          child: Icon(Icons.check,
-                              color: Colors.white, size: 28),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Done',
-                              style: headlineStyle(26,
-                                  italic: false,
-                                  weight: FontWeight.w900,
-                                  color: Colors.white)),
-                          Text(
-                            'Balanced & fulfilled for this cycle.',
-                            style: bodyStyle(11,
-                                    color: Colors.white.withOpacity(0.8))
-                                .copyWith(fontStyle: FontStyle.italic),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
@@ -493,8 +607,14 @@ class _CommitmentCard extends StatelessWidget {
 /// Draws a circular progress arc on a semi-transparent background ring.
 class _ProgressRingPainter extends CustomPainter {
   final double progress; // 0.0 – 1.0
+  final Color track;
+  final Color arc;
 
-  const _ProgressRingPainter({required this.progress});
+  const _ProgressRingPainter({
+    required this.progress,
+    required this.track,
+    required this.arc,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -507,7 +627,7 @@ class _ProgressRingPainter extends CustomPainter {
       center,
       radius,
       Paint()
-        ..color = Colors.white.withOpacity(0.2)
+        ..color = track
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth,
     );
@@ -519,7 +639,7 @@ class _ProgressRingPainter extends CustomPainter {
       2 * math.pi * progress,
       false,
       Paint()
-        ..color = Colors.white
+        ..color = arc
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round,
@@ -527,13 +647,304 @@ class _ProgressRingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ProgressRingPainter old) => old.progress != progress;
+  bool shouldRepaint(_ProgressRingPainter old) =>
+      old.progress != progress || old.arc != arc || old.track != track;
+}
+
+// ── Give sheet ────────────────────────────────────────────────────────────────
+
+/// Collects the amount and the account it comes from, then the caller records
+/// it as a real tithe expense.
+class _GiveSheet extends StatefulWidget {
+  final double suggested;
+  final List<Account> accounts;
+  final FinanceService svc;
+
+  const _GiveSheet({
+    required this.suggested,
+    required this.accounts,
+    required this.svc,
+  });
+
+  @override
+  State<_GiveSheet> createState() => _GiveSheetState();
+}
+
+class _GiveSheetState extends State<_GiveSheet> {
+  late final TextEditingController _amountCtrl;
+  late String _accountId;
+
+  @override
+  void initState() {
+    super.initState();
+    _amountCtrl = TextEditingController(
+        text: widget.suggested.toStringAsFixed(2));
+    _accountId = widget.accounts.first.id;
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom   = MediaQuery.of(context).viewInsets.bottom;
+    final currency = widget.svc.currencyOf(_accountId);
+    final fmt      = NumberFormat('#,##0.00');
+    final available = widget.svc.accountBalance(_accountId);
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 28, 24, 24 + bottom),
+      decoration: const BoxDecoration(
+        color: Color(0xFFFDFCF0),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: MysticColors.outlineVariant.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text('Record Giving',
+              style: headlineStyle(26, italic: true, weight: FontWeight.w900)),
+          const SizedBox(height: 20),
+
+          Text('AMOUNT',
+              style: labelStyle(10,
+                  letterSpacing: 1.5,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text(currency,
+                  style: headlineStyle(20,
+                      italic: false,
+                      weight: FontWeight.w700,
+                      color: MysticColors.primary.withOpacity(0.7))),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _amountCtrl,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[\d,.]')),
+                  ],
+                  style:
+                      headlineStyle(34, italic: false, weight: FontWeight.w900),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Container(
+              height: 1.5,
+              color: MysticColors.outlineVariant.withOpacity(0.3)),
+
+          const SizedBox(height: 20),
+          Text('FROM',
+              style: labelStyle(10,
+                  letterSpacing: 1.5,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+          DropdownButtonFormField<String>(
+            value: _accountId,
+            onChanged: (v) => setState(() => _accountId = v ?? _accountId),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.only(bottom: 8),
+            ),
+            style: bodyStyle(15, weight: FontWeight.w600),
+            dropdownColor: MysticColors.surfaceContainerLow,
+            items: widget.accounts
+                .map((a) => DropdownMenuItem(
+                      value: a.id,
+                      child: Row(
+                        children: [
+                          Icon(a.icon, size: 16, color: MysticColors.primary),
+                          const SizedBox(width: 8),
+                          Text('${a.name} · ${a.currency}'),
+                        ],
+                      ),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 4),
+          Text('Available: $currency ${fmt.format(available)}',
+              style: labelStyle(10,
+                  color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MysticColors.primary,
+              foregroundColor: MysticColors.onPrimary,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+            child: Text('Record',
+                style: headlineStyle(16,
+                    italic: false,
+                    weight: FontWeight.w700,
+                    color: MysticColors.onPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _submit() {
+    final amount =
+        double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
+    if (amount <= 0) return;
+    Navigator.of(context).pop(_GiveResult(amount, _accountId));
+  }
+}
+
+// ── Tithe rate dialog ─────────────────────────────────────────────────────────
+
+class _RateDialog extends StatefulWidget {
+  final double current;
+  const _RateDialog({required this.current});
+
+  @override
+  State<_RateDialog> createState() => _RateDialogState();
+}
+
+class _RateDialogState extends State<_RateDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+        text: (widget.current * 100).toStringAsFixed(
+            (widget.current * 100) % 1 == 0 ? 0 : 1));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: MysticColors.surfaceContainerLow,
+      title: Text('Giving rate',
+          style: headlineStyle(20, italic: true, weight: FontWeight.w700)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('What share of your income do you set aside?',
+              style: bodyStyle(14)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                  ],
+                  style:
+                      headlineStyle(30, italic: false, weight: FontWeight.w900),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(
+                          color:
+                              MysticColors.outlineVariant.withOpacity(0.4)),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: MysticColors.primary),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('%',
+                  style: headlineStyle(24,
+                      italic: false, weight: FontWeight.w700)),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancel',
+              style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
+        ),
+        TextButton(
+          onPressed: () {
+            final pct = double.tryParse(_ctrl.text);
+            // A rate outside 0–100% is a typo, not an intention.
+            if (pct == null || pct < 0 || pct > 100) return;
+            Navigator.pop(context, pct / 100);
+          },
+          child: Text('Save',
+              style: bodyStyle(14,
+                  weight: FontWeight.w700, color: MysticColors.primary)),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Archivist note ────────────────────────────────────────────────────────────
 
 class _ArchivistNote extends StatelessWidget {
-  const _ArchivistNote();
+  final double given;
+  final double remaining;
+  final String currency;
+
+  const _ArchivistNote({
+    required this.given,
+    required this.remaining,
+    required this.currency,
+  });
+
+  String _message(NumberFormat fmt) {
+    if (given <= 0 && remaining <= 0) {
+      return 'Record income to see what you have set aside for giving. '
+          'Anything you give is logged as a Tithe entry in your ledger.';
+    }
+    if (given <= 0) {
+      return 'Nothing recorded yet for this period. '
+          '$currency ${fmt.format(remaining)} is set aside as owed — '
+          'tap Record Giving once you have given it.';
+    }
+    if (remaining <= 0) {
+      return 'You have recorded $currency ${fmt.format(given)} in giving for '
+          'this period, meeting your commitment in full.';
+    }
+    return 'You have given $currency ${fmt.format(given)} so far this period, '
+        'with $currency ${fmt.format(remaining)} still outstanding.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -548,7 +959,7 @@ class _ArchivistNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.history_edu,
+          const Icon(Icons.history_edu,
               size: 40, color: MysticColors.primaryContainer),
           const SizedBox(width: 16),
           Expanded(
@@ -559,37 +970,11 @@ class _ArchivistNote extends StatelessWidget {
                     style: headlineStyle(17,
                         italic: false, weight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                RichText(
-                  text: TextSpan(
-                    style: bodyStyle(13,
-                        color: MysticColors.onSurfaceVariant),
-                    children: [
-                      const TextSpan(
-                          text: 'Historically, your '),
-                      WidgetSpan(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: MysticColors.primaryContainer
-                                    .withOpacity(0.6),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          child: Text('sacred giving',
-                              style: bodyStyle(13,
-                                      weight: FontWeight.w700,
-                                      color: MysticColors.onSurface)
-                                  .copyWith(fontStyle: FontStyle.italic)),
-                        ),
-                      ),
-                      const TextSpan(
-                          text:
-                              ' has increased the flow of secondary assets by 12% in subsequent moons. This selfless ledger entry maintains the harmony of your personal estate.'),
-                    ],
-                  ),
+                // Reflects the user's actual recorded giving — no invented
+                // statistics.
+                Text(
+                  _message(NumberFormat('#,##0.00')),
+                  style: bodyStyle(13, color: MysticColors.onSurfaceVariant),
                 ),
               ],
             ),

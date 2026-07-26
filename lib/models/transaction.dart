@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'currency_model.dart';
 
 enum TransactionType { income, expense }
 
@@ -18,6 +19,18 @@ class Transaction {
   final DateTime date;
   final String? note;
 
+  /// Currency of [amount] and [fee] — always the holding account's currency.
+  final String currency;
+
+  /// Value of 1 unit of [currency] in the base currency, snapshotted when the
+  /// entry was recorded. Reports use this rather than the live rate so history
+  /// does not shift when the user updates their rate table.
+  final double rateToBase;
+
+  /// Bank/service charge paid on top of [amount]. Leaves the account with the
+  /// amount, so it reduces the balance further.
+  final double fee;
+
   const Transaction({
     required this.id,
     required this.title,
@@ -27,19 +40,31 @@ class Transaction {
     required this.category,
     required this.date,
     this.note,
+    this.currency   = Currency.defaultCode,
+    this.rateToBase = 1.0,
+    this.fee        = 0.0,
   });
+
+  /// [amount] expressed in the base currency.
+  double get amountInBase => amount * rateToBase;
+
+  /// [fee] expressed in the base currency.
+  double get feeInBase => fee * rateToBase;
 
   // ── Firestore serialisation ──────────────────────────────────────────────
 
   Map<String, dynamic> toMap() => {
-        'id':        id,
-        'title':     title,
-        'amount':    amount,
-        'type':      type.name,
-        'accountId': accountId,
-        'category':  category.name,
-        'date':      Timestamp.fromDate(date),
-        'note':      note,
+        'id':         id,
+        'title':      title,
+        'amount':     amount,
+        'type':       type.name,
+        'accountId':  accountId,
+        'category':   category.name,
+        'date':       Timestamp.fromDate(date),
+        'note':       note,
+        'currency':   currency,
+        'rateToBase': rateToBase,
+        'fee':        fee,
       };
 
   factory Transaction.fromMap(Map<String, dynamic> m) => Transaction(
@@ -53,6 +78,10 @@ class Transaction {
             (e) => e.name == m['category'], orElse: () => TransactionCategory.other),
         date: (m['date'] as Timestamp).toDate(),
         note: m['note'] as String?,
+        // Pre-multi-currency documents are ETB at parity with no fee.
+        currency:   m['currency'] as String? ?? Currency.defaultCode,
+        rateToBase: (m['rateToBase'] as num?)?.toDouble() ?? 1.0,
+        fee:        (m['fee'] as num?)?.toDouble() ?? 0.0,
       );
 
   // ── Display helpers ──────────────────────────────────────────────────────

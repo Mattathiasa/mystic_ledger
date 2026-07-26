@@ -202,7 +202,7 @@ class _LedgerBook extends StatelessWidget {
         child: Center(
           child: Column(
             children: [
-              Icon(Icons.auto_stories_outlined,
+              const Icon(Icons.auto_stories_outlined,
                   size: 48, color: MysticColors.outlineVariant),
               const SizedBox(height: 12),
               Text('No entries found',
@@ -337,17 +337,27 @@ class _LedgerRow extends StatelessWidget {
             ? MysticColors.secondary
             : MysticColors.tertiary;
 
+    final cur = entry.currency;
+
     final String subtitle = isTransfer
         ? () {
             final from = svc.findAccount(entry.fromAccountId ?? '')?.name ?? entry.fromAccountId ?? '?';
             final to   = svc.findAccount(entry.toAccountId   ?? '')?.name ?? entry.toAccountId   ?? '?';
-            return '$from → $to${entry.fee > 0 ? '  (fee: ETB ${fmt.format(entry.fee)})' : ''}';
+            final fee  = entry.fee > 0
+                ? '  (fee: $cur ${fmt.format(entry.fee)})'
+                : '';
+            return '$from → $to$fee';
           }()
         : svc.findAccount(entry.accountId ?? '')?.name ?? entry.accountId ?? '?';
 
     final String amountText = isTransfer
-        ? 'ETB ${fmt.format(entry.amount)}'
-        : '${isIncome ? '+' : '-'}ETB ${fmt.format(entry.amount)}';
+        // Cross-currency transfers show both sides, since one number alone
+        // would misrepresent what actually moved.
+        ? (entry.isCrossCurrency
+            ? '$cur ${fmt.format(entry.amount)} → '
+                '${entry.toCurrency} ${fmt.format(entry.toAmount)}'
+            : '$cur ${fmt.format(entry.amount)}')
+        : '${isIncome ? '+' : '-'}$cur ${fmt.format(entry.amount)}';
 
     return Container(
       constraints: const BoxConstraints(minHeight: 80),

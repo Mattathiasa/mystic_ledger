@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'currency_model.dart';
 
 enum AccountType { bank, mobile, cash, savings }
 
@@ -8,11 +9,16 @@ class Account {
   final AccountType type;
   final bool isActive;  // false = soft-deleted (hidden, data preserved)
 
+  /// Currency this account holds. All transactions and transfers recorded
+  /// against it are stored in this currency.
+  final String currency;
+
   const Account({
     required this.id,
     required this.name,
     required this.type,
     this.isActive = true,
+    this.currency = Currency.defaultCode,
   });
 
   // ── Firestore serialisation ──────────────────────────────────────────────
@@ -22,6 +28,7 @@ class Account {
         'name':     name,
         'type':     type.name,
         'isActive': isActive,
+        'currency': currency,
       };
 
   factory Account.fromMap(Map<String, dynamic> m) => Account(
@@ -32,6 +39,8 @@ class Account {
           orElse: () => AccountType.bank,
         ),
         isActive: m['isActive'] as bool? ?? true,
+        // Documents written before multi-currency have no code — they are ETB.
+        currency: m['currency'] as String? ?? Currency.defaultCode,
       );
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -54,11 +63,18 @@ class Account {
     }
   }
 
-  Account copyWith({String? id, String? name, AccountType? type, bool? isActive}) =>
+  Account copyWith({
+    String? id,
+    String? name,
+    AccountType? type,
+    bool? isActive,
+    String? currency,
+  }) =>
       Account(
         id:       id       ?? this.id,
         name:     name     ?? this.name,
         type:     type     ?? this.type,
         isActive: isActive ?? this.isActive,
+        currency: currency ?? this.currency,
       );
 }
