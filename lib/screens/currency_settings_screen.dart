@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/currency_model.dart';
 
@@ -78,7 +79,9 @@ class CurrencySettingsScreen extends StatelessWidget {
                     dropdownColor: MysticColors.surfaceContainerLow,
                     style: bodyStyle(15, weight: FontWeight.w600),
                     onChanged: (v) {
-                      if (v != null && v != base) svc.setBaseCurrency(v);
+                      if (v == null || v == base) return;
+                      reportIfWriteFails(ScaffoldMessenger.maybeOf(context),
+                          svc.setBaseCurrency(v));
                     },
                     items: Currency.registry
                         .map((c) => DropdownMenuItem(
@@ -129,7 +132,9 @@ class CurrencySettingsScreen extends StatelessWidget {
                       code: code,
                       base: base,
                       rate: svc.settings.rateFor(code),
-                      onSave: (v) => svc.setRate(code, v),
+                      onSave: (v) => reportIfWriteFails(
+                          ScaffoldMessenger.maybeOf(context),
+                          svc.setRate(code, v)),
                     )),
             ],
           );

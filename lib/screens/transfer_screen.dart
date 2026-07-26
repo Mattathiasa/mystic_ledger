@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
 import '../models/transfer_model.dart';
@@ -65,7 +66,11 @@ class _TransferScreenState extends State<TransferScreen> {
     });
   }
 
+  bool _saving = false;
+
   void _save() {
+    // Guards against a double-tap recording the transfer twice.
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_fromId == null || _toId == null) {
       _showError('Please select both accounts.');
@@ -106,27 +111,32 @@ class _TransferScreenState extends State<TransferScreen> {
       return;
     }
 
-    svc.addTransfer(
-      Transfer(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        fromAccountId: _fromId!,
-        toAccountId: _toId!,
-        amount: amount,
-        toAmount: amount * rate,
-        fee: fee,
-        currency: from.currency,
-        toCurrency: to.currency,
-        rate: rate,
-        // Snapshot so fee reporting stays stable if rates change later.
-        rateToBase: svc.settings.rateFor(from.currency),
-        category: _category,
-        date: DateTime.now(),
-        note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-      ),
-    );
+    setState(() => _saving = true);
 
     // Capture before the pop so no BuildContext is used afterwards.
     final messenger = ScaffoldMessenger.of(context);
+    reportIfWriteFails(
+      messenger,
+      svc.addTransfer(
+        Transfer(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          fromAccountId: _fromId!,
+          toAccountId: _toId!,
+          amount: amount,
+          toAmount: amount * rate,
+          fee: fee,
+          currency: from.currency,
+          toCurrency: to.currency,
+          rate: rate,
+          // Snapshot so fee reporting stays stable if rates change later.
+          rateToBase: svc.settings.rateFor(from.currency),
+          category: _category,
+          date: DateTime.now(),
+          note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        ),
+      ),
+    );
+
     Navigator.of(context).pop();
     messenger.showSnackBar(
       SnackBar(
@@ -299,7 +309,7 @@ class _TransferScreenState extends State<TransferScreen> {
                         const SizedBox(height: 32),
 
                         // Save
-                        _SaveButton(onTap: _save),
+                        _SaveButton(onTap: _save, busy: _saving),
                       ],
                     ),
                   ),
@@ -735,33 +745,46 @@ class _NoteField extends StatelessWidget {
 
 class _SaveButton extends StatelessWidget {
   final VoidCallback onTap;
-  const _SaveButton({required this.onTap});
+  final bool busy;
+  const _SaveButton({required this.onTap, this.busy = false});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
+      onTap: busy ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: MysticColors.primary,
+          color: busy
+              ? MysticColors.primary.withOpacity(0.5)
+              : MysticColors.primary,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: MysticColors.primary.withOpacity(0.35),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          boxShadow: busy
+              ? null
+              : [
+                  BoxShadow(
+                    color: MysticColors.primary.withOpacity(0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
         ),
         child: Center(
-          child: Text(
-            'Execute Transfer',
-            style: headlineStyle(20,
-                italic: true,
-                weight: FontWeight.w900,
-                color: MysticColors.onPrimary),
-          ),
+          child: busy
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2),
+                )
+              : Text(
+                  'Execute Transfer',
+                  style: headlineStyle(20,
+                      italic: true,
+                      weight: FontWeight.w900,
+                      color: MysticColors.onPrimary),
+                ),
         ),
       ),
     );

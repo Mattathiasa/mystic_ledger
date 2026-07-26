@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/transfer_model.dart';
 
@@ -418,20 +419,23 @@ class _DepositSheetState extends State<_DepositSheet> {
     // one-off rate can be entered.
     final rate = svc.conversionRate(fromCurrency, toCurrency);
 
-    svc.addTransfer(
-      Transfer(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        fromAccountId: _fromId!,
-        toAccountId: FinanceService.idSavings,
-        amount: amount,
-        toAmount: amount * rate,
-        currency: fromCurrency,
-        toCurrency: toCurrency,
-        rate: rate,
-        rateToBase: svc.settings.rateFor(fromCurrency),
-        category: TransferCategory.savings,
-        date: DateTime.now(),
-        note: 'Savings deposit',
+    reportIfWriteFails(
+      ScaffoldMessenger.maybeOf(context),
+      svc.addTransfer(
+        Transfer(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          fromAccountId: _fromId!,
+          toAccountId: FinanceService.idSavings,
+          amount: amount,
+          toAmount: amount * rate,
+          currency: fromCurrency,
+          toCurrency: toCurrency,
+          rate: rate,
+          rateToBase: svc.settings.rateFor(fromCurrency),
+          category: TransferCategory.savings,
+          date: DateTime.now(),
+          note: 'Savings deposit',
+        ),
       ),
     );
 

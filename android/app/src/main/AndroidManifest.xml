@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Declared explicitly rather than relying on the Firebase AARs merging it
+         in. Release builds need it; the debug/profile manifests already have it. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
-        android:label="mystic_ledger"
+        android:label="Mystic Ledger"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

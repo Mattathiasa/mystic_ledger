@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
@@ -522,7 +523,9 @@ class _AccountsList extends StatelessWidget {
                         ),
                       ),
                       TextButton(
-                        onPressed: () => svc.reactivateAccount(acc.id),
+                        onPressed: () => reportIfWriteFails(
+                            ScaffoldMessenger.maybeOf(context),
+                            svc.reactivateAccount(acc.id)),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
@@ -725,16 +728,16 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
     final messenger = ScaffoldMessenger.of(context);
     final name      = _nameCtrl.text.trim();
 
+    // These are not awaited: the local write applies instantly and awaiting
+    // would stall the sheet for as long as the device is offline.
     if (name.isNotEmpty && name != acc.name) {
-      await svc.renameAccount(acc.id, name);
+      reportIfWriteFails(messenger, svc.renameAccount(acc.id, name));
     }
     if (_currency != acc.currency) {
-      try {
-        await svc.changeAccountCurrency(acc.id, _currency);
-      } on StateError catch (e) {
-        messenger.showSnackBar(_snack(e.message, MysticColors.tertiary));
-        return;
-      }
+      // Rejects with a StateError when the account already has entries;
+      // friendlyWriteError surfaces that message as-is.
+      reportIfWriteFails(
+          messenger, svc.changeAccountCurrency(acc.id, _currency));
     }
     navigator.pop();
   }
@@ -745,6 +748,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
     final balance   = svc.accountBalance(acc.id);
     final fmt       = NumberFormat('#,##0.00');
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -779,16 +783,9 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
     );
 
     if (confirmed != true) return;
-    await svc.deactivateAccount(acc.id);
+    reportIfWriteFails(messenger, svc.deactivateAccount(acc.id));
     navigator.pop();
   }
-
-  SnackBar _snack(String msg, Color bg) => SnackBar(
-        content: Text(msg, style: bodyStyle(13, color: Colors.white)),
-        backgroundColor: bg,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      );
 }
 
 // ── Debt snapshot ─────────────────────────────────────────────────────────────

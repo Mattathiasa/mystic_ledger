@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
@@ -102,6 +103,9 @@ class _GivingScreenState extends State<GivingScreen> {
       return;
     }
 
+    // Captured before the sheet, so it survives the async gap.
+    final messenger = ScaffoldMessenger.maybeOf(context);
+
     final result = await showModalBottomSheet<_GiveResult>(
       context: context,
       isScrollControlled: true,
@@ -115,17 +119,23 @@ class _GivingScreenState extends State<GivingScreen> {
     if (result == null) return;
 
     final currency = svc.currencyOf(result.accountId);
-    await svc.addTransaction(
-      Transaction(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: 'Tithe',
-        amount: result.amount,
-        type: TransactionType.expense,
-        category: TransactionCategory.tithe,
-        accountId: result.accountId,
-        date: DateTime.now(),
-        currency: currency,
-        rateToBase: svc.settings.rateFor(currency),
+    // Not awaited: with offline persistence the write applies locally at once
+    // but its Future only resolves on server ack, so awaiting would stall the
+    // screen for as long as the device is offline.
+    reportIfWriteFails(
+      messenger,
+      svc.addTransaction(
+        Transaction(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: 'Tithe',
+          amount: result.amount,
+          type: TransactionType.expense,
+          category: TransactionCategory.tithe,
+          accountId: result.accountId,
+          date: DateTime.now(),
+          currency: currency,
+          rateToBase: svc.settings.rateFor(currency),
+        ),
       ),
     );
     if (!mounted) return;
@@ -138,8 +148,9 @@ class _GivingScreenState extends State<GivingScreen> {
       context: context,
       builder: (_) => _RateDialog(current: svc.titheRate),
     );
-    if (rate == null) return;
-    await svc.setTitheRate(rate);
+    if (rate == null || !mounted) return;
+    reportIfWriteFails(
+        ScaffoldMessenger.maybeOf(context), svc.setTitheRate(rate));
   }
 
   void _snack(String msg, Color bg) {

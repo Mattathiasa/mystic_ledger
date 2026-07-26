@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
 
@@ -301,7 +302,9 @@ class _LedgerBook extends StatelessWidget {
                       ),
                     );
                   },
-                  onDismissed: (_) => svc.deleteTransaction(entry.id),
+                  onDismissed: (_) => reportIfWriteFails(
+                      ScaffoldMessenger.maybeOf(context),
+                      svc.deleteTransaction(entry.id)),
                   child: _LedgerRow(entry: entry, svc: svc, isLast: isLast),
                 );
               }).toList(),

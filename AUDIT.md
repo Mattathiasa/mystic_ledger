@@ -189,10 +189,38 @@ about who can see this phone's screen, not about the account): `totalHidden` ·
 
 - `app_theme.dart` — `MysticColors` + `buildMysticTheme()`. `headlineStyle()`,
   `bodyStyle()`, `labelStyle()` helpers used everywhere.
+- `app_feedback.dart` — `reportIfWriteFails`, `guardWrite`, `friendlyWriteError`,
+  and `context.showSuccess/showError`. **All Firestore writes report through
+  here** — see the next section.
 - `app_drawer.dart` — nav + settings, incl. Currency & rates.
 - `mystic_app_bar.dart`, `transaction_tile.dart`.
-- ⚠️ `account_card.dart` is **dead code** — `journal_screen` has its own private
-  `_AccountCard`. Still hardcodes `ETB`. Delete it or wire it up.
+
+---
+
+## Writing to Firestore — the rule that isn't obvious
+
+**Never `await` a Firestore write to drive navigation or a spinner.**
+
+Offline persistence is on (`main.dart`). A write applies to the local cache
+*immediately* — the snapshot listener fires and the UI updates — but its
+`Future` does **not** resolve until the server acknowledges it. Awaiting one
+therefore hangs the screen for the entire time the device is offline, which is
+worse than no feedback at all.
+
+The pattern everywhere is:
+
+```dart
+final messenger = ScaffoldMessenger.maybeOf(context); // capture BEFORE the pop
+reportIfWriteFails(messenger, svc.addTransaction(tx));
+Navigator.of(context).pop();
+```
+
+The messenger is captured first because the screen's own context is gone by the
+time a server rejection arrives. `guardWrite` (which *does* await) exists for
+the rare case where staying put until the server answers is correct.
+
+Save buttons additionally carry a `_saving` bool + `busy:` flag — without it a
+double-tap wrote the entry twice.
 
 ### Chart colour — has rules
 
@@ -254,11 +282,33 @@ money-critical arithmetic was extracted into the pure functions listed above.
 
 ---
 
+## Platform / release state
+
+**Android and web are both configured but neither has been built or run.**
+
+| Item | State |
+|---|---|
+| Signing | Credentials read from `android/key.properties` (gitignored). Copy `key.properties.example` and generate a keystore — **there is no key checked in** |
+| `applicationId` | ⚠️ still `com.example.mystic_ledger` — **Play rejects `com.example.*`**, and it is permanent after the first upload |
+| `targetSdk` | ⚠️ inherits Flutter 3.19.6's default of **33**; Play requires **35**. Needs a Flutter upgrade |
+| R8 | `minifyEnabled`/`shrinkResources` on, with `proguard-rules.pro`. **Never verified against a real release build** |
+| `firebase_options.dart` | ⚠️ **absent** — `Firebase.initializeApp()` takes no options, so **web cannot boot**. Run `flutterfire configure` |
+| Google Sign-In on web | `web/index.html` has a placeholder client ID; `auth_service` still uses the Android-only plugin path |
+| Firestore rules | Owner-scoped **plus schema validation**. Deploy with `firebase deploy --only firestore:rules` |
+| Web layout | Phone-width; unconstrained at desktop widths |
+
+---
+
 ## Known open items
 
-- No visual/device verification has been done on the multi-currency rework —
-  layout, overflow and label collisions are unchecked.
+- **Nothing has ever been run.** No device, no emulator, no `flutter run` — on
+  either platform. Layout, overflow and label collisions are all unverified.
+- The Play blockers in the table above (`applicationId`, `targetSdk`,
+  `firebase_options.dart`) are the critical path.
 - `widget_test.dart` Firebase failure (above).
-- Dead `lib/widgets/account_card.dart`.
+- No **edit** for an existing transaction (delete exists — swipe left in the
+  Ledger, with a confirm dialog).
+- Debts and Budgets still have no `currency` field.
+- No Crashlytics, no CI, no privacy policy.
 - Exchange rates are manual; no API feed (a deliberate choice, not an oversight).
 - `landing_page/` is a separate Vercel-deployed site in the same repo.

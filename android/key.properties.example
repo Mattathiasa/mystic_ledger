@@ -1,0 +1,21 @@
+# Copy this file to android/key.properties and fill in real values.
+#
+#     cp android/key.properties.example android/key.properties
+#
+# key.properties is gitignored (android/.gitignore) and must NEVER be committed.
+# The keystore file itself must never be committed either.
+#
+# Generate a keystore with:
+#
+#     keytool -genkey -v \
+#       -keystore ~/mystic_ledger_release.jks \
+#       -keyalg RSA -keysize 2048 -validity 10000 \
+#       -alias mystic_ledger
+#
+# Back the .jks up somewhere safe and offline. If you lose it you can never
+# publish an update to the same Play listing again.
+
+storeFile=/absolute/path/to/mystic_ledger_release.jks
+storePassword=CHANGE_ME
+keyAlias=mystic_ledger
+keyPassword=CHANGE_ME

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/transfer_model.dart';
 
@@ -355,8 +356,11 @@ class _TransferRow extends StatelessWidget {
         'Transfer reversed — the ledger has been corrected.',
         MysticColors.secondary,
       ));
-    } on StateError catch (e) {
-      messenger.showSnackBar(_snack(e.message, MysticColors.tertiary));
+    } catch (e) {
+      // StateError covers the guards (already reversed, reversing a reversal);
+      // anything else is a Firestore failure and gets a friendly message.
+      messenger
+          .showSnackBar(_snack(friendlyWriteError(e), MysticColors.tertiary));
     }
   }
 

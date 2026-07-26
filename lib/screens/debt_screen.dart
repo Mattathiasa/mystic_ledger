@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/debt_model.dart';
 
@@ -373,7 +374,9 @@ class _DebtCard extends StatelessWidget {
               const SizedBox(height: 6),
               if (!muted)
                 GestureDetector(
-                  onTap: () => svc.toggleDebtPaid(debt.id),
+                  onTap: () => reportIfWriteFails(
+                      ScaffoldMessenger.maybeOf(context),
+                      svc.toggleDebtPaid(debt.id)),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
@@ -526,14 +529,17 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
     final amount = double.tryParse(_amtCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
 
-    widget.svc.addDebt(
-      Debt(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: _nameCtrl.text.trim(),
-        amount: amount,
-        type: _type,
-        date: DateTime.now(),
-        note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+    reportIfWriteFails(
+      ScaffoldMessenger.maybeOf(context),
+      widget.svc.addDebt(
+        Debt(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: _nameCtrl.text.trim(),
+          amount: amount,
+          type: _type,
+          date: DateTime.now(),
+          note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        ),
       ),
     );
     Navigator.of(context).pop();

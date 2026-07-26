@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/transaction.dart';
 import '../models/account_model.dart';
@@ -35,12 +36,18 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     super.dispose();
   }
 
+  bool _saving = false;
+
   void _save() {
+    // Guards against a double-tap writing the entry twice.
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_accountId == null) return;
 
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
+
+    setState(() => _saving = true);
 
     final svc = context.read<FinanceService>();
     // Amounts are recorded in the holding account's currency, with the rate
@@ -50,19 +57,25 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
         ? (double.tryParse(_feeCtrl.text.replaceAll(',', '')) ?? 0.0)
         : 0.0;
 
-    svc.addTransaction(
-      Transaction(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: _titleCtrl.text.trim(),
-        amount: amount,
-        type: _type,
-        category: _category,
-        accountId: _accountId!,
-        date: DateTime.now(),
-        note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-        currency: currency,
-        rateToBase: svc.settings.rateFor(currency),
-        fee: fee,
+    // Capture before popping — this screen's context is gone by the time a
+    // server rejection comes back.
+    final messenger = ScaffoldMessenger.of(context);
+    reportIfWriteFails(
+      messenger,
+      svc.addTransaction(
+        Transaction(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: _titleCtrl.text.trim(),
+          amount: amount,
+          type: _type,
+          category: _category,
+          accountId: _accountId!,
+          date: DateTime.now(),
+          note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+          currency: currency,
+          rateToBase: svc.settings.rateFor(currency),
+          fee: fee,
+        ),
       ),
     );
     Navigator.of(context).pop();
@@ -212,7 +225,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                         const SizedBox(height: 24),
                         _NoteField(controller: _noteCtrl),
                         const SizedBox(height: 32),
-                        _SaveButton(onTap: _save),
+                        _SaveButton(onTap: _save, busy: _saving),
                       ],
                     ),
                   ),
@@ -698,33 +711,46 @@ class _NoteField extends StatelessWidget {
 
 class _SaveButton extends StatelessWidget {
   final VoidCallback onTap;
-  const _SaveButton({required this.onTap});
+  final bool busy;
+  const _SaveButton({required this.onTap, this.busy = false});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
+      onTap: busy ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: MysticColors.primary,
+          color: busy
+              ? MysticColors.primary.withOpacity(0.5)
+              : MysticColors.primary,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: MysticColors.primary.withOpacity(0.35),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          boxShadow: busy
+              ? null
+              : [
+                  BoxShadow(
+                    color: MysticColors.primary.withOpacity(0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
         ),
         child: Center(
-          child: Text(
-            'Save Entry',
-            style: headlineStyle(20,
-                italic: true,
-                weight: FontWeight.w900,
-                color: MysticColors.onPrimary),
-          ),
+          child: busy
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2),
+                )
+              : Text(
+                  'Save Entry',
+                  style: headlineStyle(20,
+                      italic: true,
+                      weight: FontWeight.w900,
+                      color: MysticColors.onPrimary),
+                ),
         ),
       ),
     );

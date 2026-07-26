@@ -5,6 +5,7 @@ import '../models/budget_model.dart';
 import '../models/transaction.dart';
 import '../services/finance_service.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 
 /// Budget Scrolls — set and track spending budgets per period.
 class BudgetScreen extends StatelessWidget {
@@ -61,7 +62,9 @@ class BudgetScreen extends StatelessWidget {
                           spent: svc.spentInPeriod(b),
                           fmt: fmt,
                           currency: svc.baseCurrency,
-                          onDelete: () => svc.deleteBudget(b.id),
+                          onDelete: () => reportIfWriteFails(
+                              ScaffoldMessenger.maybeOf(context),
+                              svc.deleteBudget(b.id)),
                         ),
                       )),
                 ],
@@ -371,8 +374,10 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
       amount:   amount,
       category: _category,
     );
-    await svc.setBudget(budget);
-    if (mounted) Navigator.pop(context);
+    // Not awaited — the local write lands immediately; awaiting would stall
+    // this sheet for as long as the device is offline.
+    reportIfWriteFails(ScaffoldMessenger.maybeOf(context), svc.setBudget(budget));
+    Navigator.pop(context);
   }
 
   @override

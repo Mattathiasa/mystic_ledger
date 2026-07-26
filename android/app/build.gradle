@@ -23,6 +23,18 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Release signing credentials. Kept in android/key.properties, which is
+// gitignored — never hard-code passwords in this file.
+// See android/key.properties.example for the expected keys.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystorePropertiesFile.withReader('UTF-8') { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
 android {
     namespace "com.example.mystic_ledger"
     compileSdk flutter.compileSdkVersion
@@ -43,10 +55,14 @@ android {
 
     signingConfigs {
         release {
-            keyAlias     'mystic_ledger'
-            keyPassword  'MysticLedger2026'
-            storeFile    file('/Users/needsreset/mystic_ledger_release.jks')
-            storePassword 'MysticLedger2026'
+            if (hasKeystore) {
+                keyAlias      keystoreProperties['keyAlias']
+                keyPassword   keystoreProperties['keyPassword']
+                // Path is relative to android/, so the project builds on any
+                // machine and in CI — not tied to one developer's home dir.
+                storeFile     file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
         }
     }
 
@@ -60,9 +76,22 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            // Without key.properties there is no release key, so fall back to
+            // debug signing rather than failing with an opaque Gradle error.
+            // A debug-signed artifact is still rejected by Play, so this can't
+            // silently ship.
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            } else {
+                logger.warn("WARNING: android/key.properties not found — " +
+                            "release build will be signed with the DEBUG key " +
+                            "and cannot be uploaded to Play.")
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled true
             shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                          'proguard-rules.pro'
         }
     }
 }

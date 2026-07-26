@@ -1,20 +1,170 @@
 rules_version = '2';
+
+// Mystic Ledger security rules.
+//
+// Two layers:
+//   1. Ownership — a user can only touch documents under their own uid.
+//   2. Shape     — writes must look like the models in lib/models/, so a
+//                  crafted client cannot inject arbitrary fields or types
+//                  that would later crash the app or corrupt balances.
+//
+// Validation is deliberately type-and-range only, not an exact field whitelist,
+// so adding an optional field to a model does not require a rules deploy to
+// avoid breaking writes.
+//
+// Deploy:  firebase deploy --only firestore:rules
+// Test:    firebase emulators:start --only firestore,auth
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Each user can only read/write their own data.
-    // No user can access another user's documents.
-    match /users/{userId} {
-      allow read, write: if request.auth != null
-                         && request.auth.uid == userId;
+    // ── Helpers ─────────────────────────────────────────────────────────────
 
-      match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null
-                           && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function data() {
+      return request.resource.data;
+    }
+
+    // A money amount: present, numeric, finite, non-negative and not absurd.
+    // Sign is carried by the entry's type, never by the amount itself.
+    function isAmount(v) {
+      return v is number && v >= 0 && v <= 1000000000;
+    }
+
+    // Optional field: absent, null, or the right type.
+    function optString(key) {
+      return !(key in data()) || data()[key] == null || data()[key] is string;
+    }
+
+    function isShortString(v) {
+      return v is string && v.size() > 0 && v.size() <= 200;
+    }
+
+    // Currency code, e.g. 'ETB'. Kept loose on purpose — the app's registry can
+    // grow without needing a rules deploy.
+    function isCurrency(v) {
+      return v is string && v.size() >= 2 && v.size() <= 8;
+    }
+
+    // Conversion rate: strictly positive. A zero or negative rate would wipe
+    // out a converted balance, so it is rejected here as well as in the client.
+    function isRate(v) {
+      return v is number && v > 0 && v <= 100000000;
+    }
+
+    // ── Per-collection shape checks ─────────────────────────────────────────
+
+    function validAccount() {
+      return isShortString(data().name)
+          && data().type in ['bank', 'mobile', 'cash', 'savings']
+          && data().isActive is bool
+          && isCurrency(data().currency);
+    }
+
+    function validTransaction() {
+      return data().title is string
+          && data().title.size() <= 200
+          && isAmount(data().amount)
+          && data().type in ['income', 'expense']
+          && isShortString(data().accountId)
+          && data().category is string
+          && data().date is timestamp
+          && isCurrency(data().currency)
+          && isRate(data().rateToBase)
+          && isAmount(data().fee)
+          && optString('note');
+    }
+
+    function validTransfer() {
+      return isShortString(data().fromAccountId)
+          && isShortString(data().toAccountId)
+          // A transfer to itself would silently do nothing but still charge a fee.
+          && data().fromAccountId != data().toAccountId
+          && isAmount(data().amount)
+          && isAmount(data().toAmount)
+          && isAmount(data().fee)
+          && isCurrency(data().currency)
+          && isCurrency(data().toCurrency)
+          && isRate(data().rate)
+          && isRate(data().rateToBase)
+          && data().date is timestamp
+          && optString('note')
+          && optString('category')
+          && optString('reversalOfId');
+    }
+
+    function validDebt() {
+      return isShortString(data().name)
+          && isAmount(data().amount)
+          && data().type in ['owe', 'owed']
+          && data().date is timestamp
+          && data().isPaid is bool
+          && optString('note');
+    }
+
+    function validBudget() {
+      return isAmount(data().amount)
+          && data().period in ['weekly', 'monthly', 'yearly']
+          && optString('category');
+    }
+
+    function validSettings() {
+      return isCurrency(data().baseCurrency)
+          // A tithe rate outside 0–100% is a typo, not an intention.
+          && data().titheRate is number
+          && data().titheRate >= 0
+          && data().titheRate <= 1
+          && data().rates is map;
+    }
+
+    // ── User profile ────────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+                            && data().uid == userId
+                            && isShortString(data().name)
+                            && data().email is string;
+
+      // ── Sub-collections ───────────────────────────────────────────────────
+      // Reads and deletes only need ownership. Writes must also match shape.
+
+      match /accounts/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow write: if isOwner(userId) && validAccount();
+      }
+
+      match /transactions/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow write: if isOwner(userId) && validTransaction();
+      }
+
+      match /transfers/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow write: if isOwner(userId) && validTransfer();
+      }
+
+      match /debts/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow write: if isOwner(userId) && validDebt();
+      }
+
+      match /budgets/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow write: if isOwner(userId) && validBudget();
+      }
+
+      match /settings/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow write: if isOwner(userId) && validSettings();
       }
     }
 
-    // Deny everything else by default
+    // Anything not matched above is denied.
     match /{document=**} {
       allow read, write: if false;
     }

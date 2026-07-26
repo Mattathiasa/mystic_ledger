@@ -1,11 +1,11 @@
 {
-    "name": "mystic_ledger",
-    "short_name": "mystic_ledger",
+    "name": "Mystic Ledger",
+    "short_name": "Mystic Ledger",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FBFBE2",
+    "theme_color": "#735C00",
+    "description": "A personal finance journal for tracking income, expenses, transfers, savings and giving across multiple currencies.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
+import '../models/currency_model.dart';
 
 /// Screen to add a new bank account.
 /// Telebirr, Cash and Savings are fixed — users can only add bank accounts here.
@@ -17,6 +19,11 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   final _formKey  = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   AccountType _type = AccountType.bank;
+  // Defaults to the user's base currency; changeable here because after the
+  // account has any entries the currency is locked (amounts are stored in it).
+  String? _pickedCurrency;
+  String get _currency =>
+      _pickedCurrency ?? context.read<FinanceService>().baseCurrency;
 
   // Common Ethiopian banks for quick selection
   static const _suggestions = [
@@ -33,20 +40,30 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   void _save() {
     if (!_formKey.currentState!.validate()) return;
 
-    final id = '${_type.name}_${DateTime.now().millisecondsSinceEpoch}';
-    context.read<FinanceService>().addAccount(
-          Account(
-            id: id,
-            name: _nameCtrl.text.trim(),
-            type: _type,
-          ),
-        );
+    final svc  = context.read<FinanceService>();
+    final id   = '${_type.name}_${DateTime.now().millisecondsSinceEpoch}';
+    final name = _nameCtrl.text.trim();
+
+    // Captured before the pop — this screen is gone by the time a rejection
+    // comes back from the server.
+    final messenger = ScaffoldMessenger.of(context);
+    reportIfWriteFails(
+      messenger,
+      svc.addAccount(
+        Account(
+          id: id,
+          name: name,
+          type: _type,
+          currency: _currency,
+        ),
+      ),
+    );
 
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '${_nameCtrl.text.trim()} added to your vaults.',
+          '$name added to your vaults.',
           style: bodyStyle(13, color: Colors.white),
         ),
         backgroundColor: MysticColors.secondary,
@@ -130,6 +147,48 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                         _TypeSelector(
                           selected: _type,
                           onChanged: (t) => setState(() => _type = t),
+                        ),
+                        const SizedBox(height: 28),
+                        Container(
+                            height: 1,
+                            color: MysticColors.outlineVariant.withOpacity(0.2)),
+                        const SizedBox(height: 24),
+
+                        // Currency — set here because it is locked once the
+                        // account has any entries recorded against it.
+                        Text('CURRENCY',
+                            style: labelStyle(9,
+                                letterSpacing: 1.5,
+                                color: MysticColors.onSurfaceVariant
+                                    .withOpacity(0.6))),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _currency,
+                          onChanged: (v) =>
+                              setState(() => _pickedCurrency = v),
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.only(bottom: 8),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: MysticColors.outlineVariant
+                                      .withOpacity(0.3),
+                                  width: 1.5),
+                            ),
+                            focusedBorder: const UnderlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: MysticColors.primary, width: 1.5),
+                            ),
+                          ),
+                          style: bodyStyle(16, weight: FontWeight.w600),
+                          dropdownColor: MysticColors.surfaceContainerLow,
+                          items: Currency.registry
+                              .map((c) => DropdownMenuItem(
+                                    value: c.code,
+                                    child: Text('${c.code} · ${c.name}'),
+                                  ))
+                              .toList(),
                         ),
                         const SizedBox(height: 28),
                         Container(

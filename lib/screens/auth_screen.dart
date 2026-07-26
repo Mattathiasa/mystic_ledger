@@ -65,6 +65,16 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _forgotPassword() async {
     final emailCtrl = TextEditingController(text: _emailCtrl.text.trim());
+    try {
+      await _showResetDialog(emailCtrl);
+    } finally {
+      // Disposed here rather than left to the GC — a new controller was
+      // otherwise leaked every time the dialog opened.
+      emailCtrl.dispose();
+    }
+  }
+
+  Future<void> _showResetDialog(TextEditingController emailCtrl) async {
     await showDialog(
       context: context,
       builder: (_) => AlertDialog(
