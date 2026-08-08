@@ -1,6 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../services/finance_service.dart';
 import '../services/sms_capture_service.dart';
+import '../services/lock_service.dart';
+import '../services/home_widget_service.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_drawer.dart';
 import 'journal_screen.dart';
@@ -8,6 +14,7 @@ import 'ledger_screen.dart';
 import 'giving_screen.dart';
 import 'insights_screen.dart';
 import 'finance_hub_screen.dart';
+import 'new_entry_screen.dart';
 
 /// Gives the tabs a handle on the shell that contains them.
 ///
@@ -58,24 +65,100 @@ class _MainScaffoldState extends State<MainScaffold>
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  // Home-screen widget bridge: the service is watched so the balance card on
+  // the launcher stays in step with the ledger, and widget taps that carry a
+  // deep link ("Add Entry") are routed to the entry form.
+  FinanceService? _svc;
+  StreamSubscription<Uri?>? _widgetTapSub;
+  Timer? _widgetSyncDebounce;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _listenForWidgetTaps();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Attach the widget-sync listener once the service is reachable. read() is
+    // legal here because the provider wraps the whole MaterialApp.
+    if (_svc == null) {
+      _svc = context.read<FinanceService>();
+      _svc!.addListener(_onServiceChanged);
+      // First sync after the first frame, once streams have settled.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onServiceChanged());
+    }
+  }
+
+  Future<void> _listenForWidgetTaps() async {
+    // The home-screen widget exists only on Android, and the plugin has no
+    // web implementation — calling its channels elsewhere throws
+    // MissingPluginException, so the whole bridge is gated on `supported`.
+    if (!HomeWidgetService.instance.supported) return;
+    // Cold start: the app may have been launched by tapping the widget.
+    final uri = await HomeWidgetService.instance.initiallyLaunchedFromWidget();
+    _routeWidgetTap(uri);
+    _widgetTapSub = HomeWidgetService.instance.onWidgetClicked.listen(_routeWidgetTap);
+  }
+
+  void _routeWidgetTap(Uri? uri) {
+    if (uri == null) return;
+    if (uri.toString() == HomeWidgetService.addEntryUri && mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const NewEntryScreen()),
+      );
+    }
+  }
+
+  /// Pushes the current balance to the home-screen widget. Debounced so a
+  /// burst of Firestore snapshots at startup becomes one redraw.
+  void _onServiceChanged() {
+    _widgetSyncDebounce?.cancel();
+    _widgetSyncDebounce = Timer(const Duration(milliseconds: 400), () {
+      final svc = _svc;
+      if (svc == null || svc.isLoading) return;
+      final fmt = NumberFormat('#,##0.00');
+      final hidden = svc.totalHidden;
+      HomeWidgetService.instance.update(
+        balanceText: hidden
+            ? '••••••'
+            : '${svc.baseCurrency} ${fmt.format(svc.totalBalance)}',
+        label: hidden ? 'BALANCE HIDDEN' : 'TOTAL BALANCE',
+      );
+    });
   }
 
   @override
   void dispose() {
+    _svc?.removeListener(_onServiceChanged);
+    _widgetTapSub?.cancel();
+    _widgetSyncDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Lock before anything is visible again: the moment the app is no longer
+    // foregrounded the gate seals, so a returning phone starts at LockScreen.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      LockService.instance.lock();
+    }
     // The telephony plugin's background isolate may have queued drafts while
     // the app was paused — reload so the banner and review count are current.
+    // Also propose any recurring schedules that came due while away.
     if (state == AppLifecycleState.resumed) {
       SmsCaptureService.instance.refresh();
+      if (mounted && context.read<FinanceService>().isLoading == false) {
+        final svc = context.read<FinanceService>();
+        // Propose schedules that came due while away, then re-arm local
+        // alerts so they stay in step with the current data.
+        svc.proposeDueRecurring();
+        svc.rearmNotifications();
+      }
     }
   }
 

@@ -6,8 +6,13 @@ import '../services/auth_service.dart';
 import '../services/finance_service.dart';
 import '../services/user_service.dart';
 import '../services/sms_capture_service.dart';
+import '../services/data_exporter.dart';
+import '../services/lock_service.dart';
+import '../services/notification_service.dart';
+import '../services/theme_service.dart';
 import '../widgets/app_theme.dart';
 import 'captured_screen.dart';
+import 'recurring_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Full-screen profile page — accessible from the drawer.
@@ -104,7 +109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -151,6 +156,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 const SizedBox(height: 28),
 
+                // ── Data tools ─────────────────────────────────────────
+                _ToolsCard(svc: svc),
+
+                const SizedBox(height: 28),
+
+                // ── Appearance ────────────────────────────────────────
+                const _AppearanceCard(),
+
+                const SizedBox(height: 28),
+
+                // ── App lock ───────────────────────────────────────────
+                const _SecurityCard(),
+
+                const SizedBox(height: 28),
+
+                // ── Notifications ──────────────────────────────────────
+                const _NotificationsCard(),
+
+                const SizedBox(height: 28),
+
                 // ── Info rows ─────────────────────────────────────────
                 _InfoCard(
                   rows: [
@@ -185,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.logout,
+                        Icon(Icons.logout,
                             color: MysticColors.tertiary, size: 20),
                         const SizedBox(width: 10),
                         Text(
@@ -391,9 +416,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(24, 28, 24, 24 + bottom),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFDFCF0),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: MysticColors.appBarBackground,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -651,7 +676,7 @@ class _CaptureCard extends StatelessWidget {
                         color: MysticColors.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.mark_email_unread_outlined,
+                      child: Icon(Icons.mark_email_unread_outlined,
                           size: 18, color: MysticColors.primary),
                     ),
                     const SizedBox(width: 12),
@@ -705,7 +730,7 @@ class _CaptureCard extends StatelessWidget {
 
               // ── Actions ─────────────────────────────────────────────
               if (svc.isEnabled && svc.supported) ...[
-                const Divider(
+                Divider(
                     height: 1, color: MysticColors.outlineVariant),
                 _CaptureAction(
                   icon: Icons.notifications_active_outlined,
@@ -798,6 +823,371 @@ class _CaptureAction extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Data tools card ───────────────────────────────────────────────────────────
+
+/// Export + recurring + (later) appearance/security toggles.
+class _ToolsCard extends StatelessWidget {
+  final FinanceService svc;
+  const _ToolsCard({required this.svc});
+
+  Future<void> _export(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final snack = (String msg, Color color) => messenger.showSnackBar(SnackBar(
+          content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+          backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+
+    try {
+      final shared = await DataExporter.share(svc);
+      if (!shared) snack('Export cancelled.', MysticColors.onSurfaceVariant);
+    } catch (_) {
+      snack('Could not share the export — try again.', MysticColors.tertiary);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: MysticColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border:
+            Border.all(color: MysticColors.outlineVariant.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: MysticColors.secondary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.auto_awesome_outlined,
+                      size: 18, color: MysticColors.secondary),
+                ),
+                const SizedBox(width: 12),
+                Text('DATA TOOLS',
+                    style: labelStyle(9,
+                        letterSpacing: 1.5,
+                        color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+              ],
+            ),
+          ),
+          _CaptureAction(
+            icon: Icons.repeat,
+            label: 'Recurring transactions',
+            subtitle: 'Salary, rent, subscriptions — schedules that propose themselves',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RecurringScreen()),
+            ),
+          ),
+          Divider(height: 1, color: MysticColors.outlineVariant),
+          _CaptureAction(
+            icon: Icons.file_download_outlined,
+            label: 'Export to CSV',
+            subtitle: 'Back up or share your records — transactions, transfers, debts, budgets',
+            onTap: () => _export(context),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Security card ─────────────────────────────────────────────────────────────
+
+/// App lock toggle backed by [LockService]. The lock itself is enforced at the
+/// app root, so this card is only about the preference.
+class _SecurityCard extends StatelessWidget {
+  const _SecurityCard();
+
+  Future<void> _toggle(BuildContext context, bool value) async {
+    final svc = LockService.instance;
+    if (value && !svc.supported) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Biometric lock is available on Android and iOS only.',
+            style: bodyStyle(13, color: Colors.white)),
+        backgroundColor: MysticColors.tertiary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+      return;
+    }
+    if (value && !await svc.canUse) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'No fingerprint or PIN is enrolled on this device, so the lock '
+            'cannot verify you.',
+            style: bodyStyle(13, color: Colors.white)),
+        backgroundColor: MysticColors.tertiary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+      return;
+    }
+    await svc.setEnabled(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: LockService.instance,
+      builder: (context, _) {
+        final svc = LockService.instance;
+        return Container(
+          decoration: BoxDecoration(
+            color: MysticColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: MysticColors.outlineVariant.withOpacity(0.15)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: MysticColors.tertiary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.lock_outline,
+                          size: 18, color: MysticColors.tertiary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('APP LOCK',
+                              style: labelStyle(9,
+                                  letterSpacing: 1.5,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6))),
+                          const SizedBox(height: 2),
+                          Text('Biometric / PIN gate',
+                              style: bodyStyle(14, weight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: svc.isEnabled,
+                      activeTrackColor: MysticColors.tertiary.withOpacity(0.5),
+                      activeColor: MysticColors.tertiary,
+                      onChanged: (v) => _toggle(context, v),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: Text(
+                  svc.supported
+                      ? 'Lock the ledger whenever the app leaves the screen. '
+                          'Your fingerprint or device PIN unlocks it.'
+                      : 'Available on Android and iOS devices.',
+                  style: bodyStyle(12,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.75)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Appearance card ──────────────────────────────────────────────────────────
+
+/// Dark-mode toggle. The palette swap applies instantly via ThemeService.
+class _AppearanceCard extends StatelessWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: ThemeService.instance,
+      builder: (context, _) {
+        final svc = ThemeService.instance;
+        return Container(
+          decoration: BoxDecoration(
+            color: MysticColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: MysticColors.outlineVariant.withOpacity(0.15)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: MysticColors.primaryContainer.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.dark_mode_outlined,
+                          size: 18, color: MysticColors.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('APPEARANCE',
+                              style: labelStyle(9,
+                                  letterSpacing: 1.5,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6))),
+                          const SizedBox(height: 2),
+                          Text('Dark mode',
+                              style: bodyStyle(14, weight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: svc.isDark,
+                      activeTrackColor:
+                          MysticColors.primary.withOpacity(0.5),
+                      activeColor: MysticColors.primary,
+                      onChanged: (v) => ThemeService.instance.setDark(v),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: Text(
+                  'Deep charcoal and ink — the grimoire after hours.',
+                  style: bodyStyle(12,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.75)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Notifications card ───────────────────────────────────────────────────────
+
+/// Local alert toggle. Alerts (budget limits, debt due dates, tithe reminder,
+/// recurring prompts) are scheduled on-device and re-armed on resume.
+class _NotificationsCard extends StatelessWidget {
+  const _NotificationsCard();
+
+  Future<void> _toggle(BuildContext context, bool value) async {
+    final svc = NotificationService.instance;
+    final finance = context.read<FinanceService>();
+    final messenger = ScaffoldMessenger.of(context);
+    await svc.setEnabled(value);
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        value
+            ? 'Alerts enabled — budget, debt, tithe and recurring reminders.'
+            : 'Alerts disabled. Pending reminders were cancelled.',
+        style: bodyStyle(13, color: Colors.white),
+      ),
+      backgroundColor:
+          value ? MysticColors.secondary : MysticColors.onSurfaceVariant,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+    if (value) {
+      await finance.rearmNotifications();
+    } else {
+      await NotificationService.instance.cancelAll();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: NotificationService.instance,
+      builder: (context, _) {
+        return Container(
+          decoration: BoxDecoration(
+            color: MysticColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: MysticColors.outlineVariant.withOpacity(0.15)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: MysticColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.notifications_active_outlined,
+                          size: 18, color: MysticColors.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('NOTIFICATIONS',
+                              style: labelStyle(9,
+                                  letterSpacing: 1.5,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6))),
+                          const SizedBox(height: 2),
+                          Text('Local reminders',
+                              style: bodyStyle(14, weight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: NotificationService.instance.isEnabled,
+                      activeTrackColor: MysticColors.primary.withOpacity(0.5),
+                      activeColor: MysticColors.primary,
+                      onChanged: (v) => _toggle(context, v),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: Text(
+                  'Budget limits at 80% and 100%, debt due dates, the tithe '
+                  'month-end check-in, and recurring-schedule prompts. All '
+                  'alerts are scheduled on this device.',
+                  style: bodyStyle(12,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.75)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -19,7 +19,7 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
     final uid = AuthService().currentUser?.uid ?? '';
 
     return AppBar(
-      backgroundColor: const Color(0xFFFDFCF0),
+      backgroundColor: MysticColors.appBarBackground,
       elevation: 0,
       scrolledUnderElevation: 0,
 
@@ -34,7 +34,7 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
         padding: const EdgeInsets.only(left: 8),
         child: Builder(
           builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu, color: MysticColors.primary),
+            icon: Icon(Icons.menu, color: MysticColors.primary),
             onPressed: () {
               final shell = MainShell.maybeOf(ctx);
               if (shell != null) {
@@ -86,7 +86,7 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
                               weight: FontWeight.w800,
                               color: MysticColors.primary),
                         )
-                      : const Icon(
+                      : Icon(
                           Icons.person_outline,
                           color: MysticColors.onSurfaceVariant,
                           size: 20,

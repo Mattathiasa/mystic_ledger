@@ -13,6 +13,7 @@ import '../screens/debt_screen.dart';
 import '../screens/add_account_screen.dart';
 import '../screens/budget_screen.dart';
 import '../screens/currency_settings_screen.dart';
+import '../screens/recurring_screen.dart';
 
 /// Side drawer opened by the hamburger icon in the app bar.
 /// Shows user profile summary, quick nav, and settings.
@@ -85,6 +86,11 @@ class AppDrawer extends StatelessWidget {
                       label: 'Budget Scrolls',
                       onTap: () => _push(context, const BudgetScreen()),
                     ),
+                    _DrawerTile(
+                      icon: Icons.repeat,
+                      label: 'Recurring',
+                      onTap: () => _push(context, const RecurringScreen()),
+                    ),
 
                     const SizedBox(height: 8),
                     _Divider(),
@@ -151,7 +157,7 @@ class AppDrawer extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 child: Row(
                   children: [
-                    const Icon(Icons.auto_awesome,
+                    Icon(Icons.auto_awesome,
                         size: 14, color: MysticColors.primaryContainer),
                     const SizedBox(width: 8),
                     Text(

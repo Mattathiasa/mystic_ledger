@@ -138,7 +138,7 @@ class _JournalCover extends StatelessWidget {
                         width: 1,
                       ),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.auto_awesome,
                       size: 52,
                       color: MysticColors.primaryContainer,

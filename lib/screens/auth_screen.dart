@@ -100,7 +100,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   borderSide: BorderSide(
                       color: MysticColors.outlineVariant.withOpacity(0.4)),
                 ),
-                focusedBorder: const UnderlineInputBorder(
+                focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: MysticColors.primary),
                 ),
               ),
@@ -342,7 +342,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
                             // Submit button
                             _loading
-                                ? const Center(
+                                ? Center(
                                     child: CircularProgressIndicator(
                                       color: MysticColors.primary,
                                     ),
@@ -427,7 +427,7 @@ class _Bookmark extends StatelessWidget {
               topRight: Radius.circular(6),
             ),
           ),
-          child: const Center(
+          child: Center(
             child: Icon(Icons.auto_awesome,
                 color: MysticColors.primaryContainer, size: 20),
           ),
@@ -497,13 +497,13 @@ class _InputField extends StatelessWidget {
               color: MysticColors.outlineVariant.withOpacity(0.3),
               width: 1.5),
         ),
-        focusedBorder: const UnderlineInputBorder(
+        focusedBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.primary, width: 1.5),
         ),
-        errorBorder: const UnderlineInputBorder(
+        errorBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.tertiary, width: 1.5),
         ),
-        focusedErrorBorder: const UnderlineInputBorder(
+        focusedErrorBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.tertiary, width: 1.5),
         ),
       ),
@@ -551,13 +551,13 @@ class _PasswordField extends StatelessWidget {
               color: MysticColors.outlineVariant.withOpacity(0.3),
               width: 1.5),
         ),
-        focusedBorder: const UnderlineInputBorder(
+        focusedBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.primary, width: 1.5),
         ),
-        errorBorder: const UnderlineInputBorder(
+        errorBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.tertiary, width: 1.5),
         ),
-        focusedErrorBorder: const UnderlineInputBorder(
+        focusedErrorBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.tertiary, width: 1.5),
         ),
       ),
