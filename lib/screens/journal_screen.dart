@@ -5,13 +5,13 @@ import '../widgets/app_theme.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../widgets/transaction_tile.dart';
 import '../widgets/empty_state_card.dart';
-import '../widgets/account_edit_sheet.dart';
 import '../services/finance_service.dart';
 import '../services/sms_capture_service.dart';
 import '../models/account_model.dart';
 import 'main_scaffold.dart';
 import 'new_entry_screen.dart';
 import 'captured_screen.dart';
+import 'account_detail_screen.dart';
 
 /// The entry form's slide-up transition.
 ///
@@ -42,7 +42,7 @@ class JournalScreen extends StatelessWidget {
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
           if (svc.isLoading) {
-            return const Center(
+            return Center(
               child: CircularProgressIndicator(color: MysticColors.primary),
             );
           }
@@ -115,7 +115,7 @@ class _CaptureBanner extends StatelessWidget {
                       color: MysticColors.primary.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.mark_email_unread_outlined,
+                    child: Icon(Icons.mark_email_unread_outlined,
                         color: MysticColors.primary, size: 18),
                   ),
                   const SizedBox(width: 14),
@@ -140,7 +140,7 @@ class _CaptureBanner extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right,
+                  Icon(Icons.chevron_right,
                       color: MysticColors.primary, size: 20),
                 ],
               ),
@@ -242,7 +242,7 @@ class _BalanceHero extends StatelessWidget {
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.only(left: 12),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(
               left: BorderSide(color: MysticColors.primaryContainer, width: 2),
             ),
@@ -265,16 +265,16 @@ class _AccountSection extends StatelessWidget {
   const _AccountSection({required this.svc});
 
   // Colour palette cycling for dynamic bank accounts
-  static const _iconColors = [
-    MysticColors.primary,
-    MysticColors.secondary,
-    MysticColors.tertiary,
-  ];
-  static const _bgColors = [
-    MysticColors.surfaceContainerLow,
-    MysticColors.surfaceContainerHigh,
-    MysticColors.surfaceContainer,
-  ];
+  static List<Color> get _iconColors => [
+        MysticColors.primary,
+        MysticColors.secondary,
+        MysticColors.tertiary,
+      ];
+  static List<Color> get _bgColors => [
+        MysticColors.surfaceContainerLow,
+        MysticColors.surfaceContainerHigh,
+        MysticColors.surfaceContainer,
+      ];
   static const _rotations = [-0.009, 0.014, -0.005, 0.008];
 
   @override
@@ -307,7 +307,9 @@ class _AccountSection extends StatelessWidget {
         iconColor: ic,
         bgColor: bg,
         rotation: rot,
-        onTap: () => showAccountEditSheet(context, svc, acc),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => AccountDetailScreen(account: acc)),
+        ),
       );
     }).toList();
 
@@ -497,7 +499,7 @@ class _RecentSection extends StatelessWidget {
             child: Center(
               child: Column(
                 children: [
-                  const Icon(Icons.auto_stories_outlined,
+                  Icon(Icons.auto_stories_outlined,
                       size: 56, color: MysticColors.outlineVariant),
                   const SizedBox(height: 12),
                   Text(
@@ -559,7 +561,7 @@ class _AddFab extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
+            Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
             const SizedBox(width: 8),
             Text('ADD ENTRY',
                 style:

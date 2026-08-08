@@ -19,7 +19,7 @@ class TransferHistoryScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -39,7 +39,7 @@ class TransferHistoryScreen extends StatelessWidget {
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
           if (svc.isLoading) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: MysticColors.primary));
           }
           final transfers = svc.transfers;
@@ -106,7 +106,7 @@ class _FeeSummary extends StatelessWidget {
               color: MysticColors.tertiary.withOpacity(0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.percent,
+            child: Icon(Icons.percent,
                 color: MysticColors.tertiary, size: 20),
           ),
           const SizedBox(width: 14),
@@ -461,7 +461,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.swap_horiz,
+            Icon(Icons.swap_horiz,
                 size: 56, color: MysticColors.outlineVariant),
             const SizedBox(height: 12),
             Text('No transfers recorded yet',

@@ -20,7 +20,7 @@ class SavingsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -73,6 +73,7 @@ class SavingsScreen extends StatelessWidget {
                     // ── Hero card ──────────────────────────────────────────
                     _SavingsHeroCard(
                       summary: summary,
+                      svc: svc,
                       hidden: svc.savingsHidden,
                       fmt: fmt,
                     ),
@@ -136,16 +137,34 @@ class SavingsScreen extends StatelessWidget {
 
 class _SavingsHeroCard extends StatelessWidget {
   final SavingsSummary summary;
+  final FinanceService svc;
   final bool hidden;
   final NumberFormat fmt;
   const _SavingsHeroCard({
     required this.summary,
+    required this.svc,
     required this.hidden,
     required this.fmt,
   });
 
+  /// The savings goal shown on the hero: summed across every vault that has
+  /// one, in the vault currency (or the base currency when a conversion is in
+  /// play). Null when no vault defines a target.
+  ({double amount, String currency})? get _goal {
+    final withTargets =
+        summary.accounts.where((a) => a.targetAmount != null).toList();
+    if (withTargets.isEmpty) return null;
+    return (
+      amount: withTargets.map((a) => a.targetAmount!).reduce((a, b) => a + b),
+      currency: summary.converted
+          ? svc.baseCurrency
+          : withTargets.first.currency,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final goal = _goal;
     return Transform.rotate(
       angle: -0.009,
       child: Container(
@@ -220,6 +239,16 @@ class _SavingsHeroCard extends StatelessWidget {
                         color: Colors.white.withOpacity(0.75)),
                   ),
                 ],
+                if (goal != null) ...[
+                  const SizedBox(height: 18),
+                  _GoalProgress(
+                    saved: summary.amount,
+                    target: goal.amount,
+                    hidden: hidden,
+                    fmt: fmt,
+                    currency: goal.currency,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   '"Every coin sealed in the vault is a stone in the fortress of your future."',
@@ -242,6 +271,77 @@ class _SavingsHeroCard extends StatelessWidget {
 /// The hero converts everything to one number; this is where each vault's own
 /// currency and exact balance stay visible, so the converted total never hides
 /// what is actually held where.
+// ── Goal progress bar ────────────────────────────────────────────────────────
+
+class _GoalProgress extends StatelessWidget {
+  final double saved;
+  final double target;
+  final bool hidden;
+  final NumberFormat fmt;
+  final String currency;
+  const _GoalProgress({
+    required this.saved,
+    required this.target,
+    required this.hidden,
+    required this.fmt,
+    required this.currency,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = target <= 0 ? 1.0 : (saved / target).clamp(0.0, 1.0);
+    final achieved = saved >= target;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'GOAL',
+              style: labelStyle(9,
+                  letterSpacing: 1.5, color: Colors.white.withOpacity(0.8)),
+            ),
+            Text(
+              hidden
+                  ? '••••'
+                  : '${(pct * 100).toStringAsFixed(0)}% · '
+                      '${currency} ${fmt.format(target)}',
+              style: labelStyle(9,
+                  letterSpacing: 0.8, color: Colors.white.withOpacity(0.9)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: hidden ? 0 : pct,
+            minHeight: 8,
+            backgroundColor: Colors.white.withOpacity(0.18),
+            valueColor: AlwaysStoppedAnimation(achieved
+                ? const Color(0xFFB7E4C7)
+                : Colors.white),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          achieved
+              ? 'Goal reached — the vault is sealed.'
+              : hidden
+                  ? ''
+                  : '${currency} ${fmt.format(saved)} of ${fmt.format(target)} saved',
+          style: labelStyle(9,
+              letterSpacing: 0.5, color: Colors.white.withOpacity(0.75)),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Per-vault breakdown ───────────────────────────────────────────────────────
+
 class _VaultBreakdown extends StatelessWidget {
   final SavingsSummary summary;
   final FinanceService svc;
@@ -420,7 +520,7 @@ class _EmptyHistory extends StatelessWidget {
       child: Center(
         child: Column(
           children: [
-            const Icon(Icons.savings_outlined,
+            Icon(Icons.savings_outlined,
                 size: 52, color: MysticColors.outlineVariant),
             const SizedBox(height: 12),
             Text(
@@ -476,7 +576,7 @@ class _DepositFab extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
+            Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
             const SizedBox(width: 8),
             Text('DEPOSIT',
                 style: labelStyle(11,
@@ -501,6 +601,7 @@ class _DepositSheet extends StatefulWidget {
 class _DepositSheetState extends State<_DepositSheet> {
   final _formKey    = GlobalKey<FormState>();
   final _amountCtrl = TextEditingController();
+  final _feeCtrl    = TextEditingController();
   String? _fromId;
   String? _toId;
 
@@ -519,6 +620,7 @@ class _DepositSheetState extends State<_DepositSheet> {
   @override
   void dispose() {
     _amountCtrl.dispose();
+    _feeCtrl.dispose();
     super.dispose();
   }
 
@@ -532,6 +634,8 @@ class _DepositSheetState extends State<_DepositSheet> {
 
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
+    final fee = double.tryParse(_feeCtrl.text.replaceAll(',', '')) ?? 0.0;
+    if (fee < 0) return;
 
     final svc          = widget.svc;
     final fromCurrency = svc.currencyOf(_fromId!);
@@ -550,6 +654,7 @@ class _DepositSheetState extends State<_DepositSheet> {
           toAccountId: _toId!,
           amount: amount,
           toAmount: amount * rate,
+          fee: fee,
           currency: fromCurrency,
           toCurrency: toCurrency,
           rate: rate,
@@ -574,7 +679,7 @@ class _DepositSheetState extends State<_DepositSheet> {
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: MysticColors.surfaceContainerLow,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(28),
@@ -655,7 +760,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                         color: MysticColors.outlineVariant.withOpacity(0.3),
                         width: 1.5),
                   ),
-                  focusedBorder: const UnderlineInputBorder(
+                  focusedBorder: UnderlineInputBorder(
                     borderSide:
                         BorderSide(color: MysticColors.primary, width: 1.5),
                   ),
@@ -688,7 +793,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                           color: MysticColors.outlineVariant.withOpacity(0.3),
                           width: 1.5),
                     ),
-                    focusedBorder: const UnderlineInputBorder(
+                    focusedBorder: UnderlineInputBorder(
                       borderSide:
                           BorderSide(color: MysticColors.primary, width: 1.5),
                     ),
@@ -755,6 +860,60 @@ class _DepositSheetState extends State<_DepositSheet> {
               Container(
                   height: 1.5,
                   color: MysticColors.outlineVariant.withOpacity(0.3)),
+              const SizedBox(height: 20),
+
+              // Fee (optional) — mirror of the Transfer screen's fee field.
+              // A deposit can carry a bank/service charge just like any other
+              // transfer; leaving it out would understate what left the source.
+              Text('TRANSFER FEE / SERVICE CHARGE (OPTIONAL)',
+                  style: labelStyle(9,
+                      letterSpacing: 1.5,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text(
+                    _fromId == null
+                        ? widget.svc.baseCurrency
+                        : widget.svc.currencyOf(_fromId!),
+                    style: bodyStyle(16,
+                        weight: FontWeight.w600,
+                        color: MysticColors.tertiary.withOpacity(0.7)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _feeCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d,.]')),
+                      ],
+                      style: bodyStyle(20,
+                          weight: FontWeight.w700,
+                          color: MysticColors.tertiary),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: '0.00  (bank/service fee)',
+                        hintStyle: bodyStyle(14,
+                            color: MysticColors.onSurface.withOpacity(0.2)),
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                        enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(
+                              color:
+                                  MysticColors.outlineVariant.withOpacity(0.3),
+                              width: 1),
+                        ),
+                        focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(
+                              color: MysticColors.tertiary, width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 28),
 
               // Save

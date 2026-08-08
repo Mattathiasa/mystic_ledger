@@ -185,7 +185,7 @@ class _TransferScreenState extends State<TransferScreen> {
       child: Scaffold(
         backgroundColor: MysticColors.background,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFFDFCF0),
+          backgroundColor: MysticColors.appBarBackground,
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
@@ -447,7 +447,7 @@ class _AccountFlowRow extends StatelessWidget {
                   border: Border.all(
                       color: MysticColors.primary.withOpacity(0.25)),
                 ),
-                child: const Icon(Icons.swap_vert,
+                child: Icon(Icons.swap_vert,
                     color: MysticColors.primary, size: 20),
               ),
             ),
@@ -490,7 +490,7 @@ class _AccountDropdown extends StatelessWidget {
           borderSide: BorderSide(
               color: MysticColors.outlineVariant.withOpacity(0.3), width: 1.5),
         ),
-        focusedBorder: const UnderlineInputBorder(
+        focusedBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.primary, width: 1.5),
         ),
       ),
@@ -547,7 +547,7 @@ class _FeeField extends StatelessWidget {
                 borderSide: BorderSide(
                     color: MysticColors.outlineVariant.withOpacity(0.3), width: 1),
               ),
-              focusedBorder: const UnderlineInputBorder(
+              focusedBorder: UnderlineInputBorder(
                 borderSide: BorderSide(color: MysticColors.tertiary, width: 1.5),
               ),
             ),
@@ -597,7 +597,7 @@ class _ExchangeRateRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.currency_exchange,
+              Icon(Icons.currency_exchange,
                   size: 14, color: MysticColors.primary),
               const SizedBox(width: 6),
               Expanded(
@@ -635,7 +635,7 @@ class _ExchangeRateRow extends StatelessWidget {
                       borderSide: BorderSide(
                           color: MysticColors.primary.withOpacity(0.35)),
                     ),
-                    focusedBorder: const UnderlineInputBorder(
+                    focusedBorder: UnderlineInputBorder(
                       borderSide:
                           BorderSide(color: MysticColors.primary, width: 1.5),
                     ),
@@ -747,7 +747,7 @@ class _NoteField extends StatelessWidget {
           borderSide: BorderSide(
               color: MysticColors.outlineVariant.withOpacity(0.3), width: 1.5),
         ),
-        focusedBorder: const UnderlineInputBorder(
+        focusedBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: MysticColors.primary, width: 1.5),
         ),
       ),

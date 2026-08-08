@@ -316,7 +316,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.info_outline,
+                              Icon(Icons.info_outline,
                                   size: 15, color: MysticColors.tertiary),
                               const SizedBox(width: 8),
                               Expanded(
@@ -662,6 +662,14 @@ class _CategoryPicker extends StatelessWidget {
     TransactionCategory.transport,
     TransactionCategory.utilities,
     TransactionCategory.entertainment,
+    TransactionCategory.health,
+    TransactionCategory.education,
+    TransactionCategory.rent,
+    TransactionCategory.clothing,
+    TransactionCategory.business,
+    TransactionCategory.taxes,
+    TransactionCategory.insurance,
+    TransactionCategory.subscriptions,
     TransactionCategory.tithe,
     TransactionCategory.other,
   ];
@@ -669,6 +677,7 @@ class _CategoryPicker extends StatelessWidget {
   static const _incomeCategories = [
     TransactionCategory.salary,
     TransactionCategory.freelance,
+    TransactionCategory.business,
     TransactionCategory.tithe,
     TransactionCategory.other,
   ];
@@ -710,7 +719,7 @@ class _CategoryPicker extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  cat.pickerLabel,
+                  cat.mystiqueLabel,
                   style: labelStyle(10,
                       letterSpacing: 0.8,
                       color: isSelected
@@ -763,7 +772,7 @@ class _AccountPicker extends StatelessWidget {
                   color: MysticColors.outlineVariant.withOpacity(0.3),
                   width: 1.5),
             ),
-            focusedBorder: const UnderlineInputBorder(
+            focusedBorder: UnderlineInputBorder(
               borderSide:
                   BorderSide(color: MysticColors.primary, width: 1.5),
             ),
@@ -819,7 +828,7 @@ class _NoteField extends StatelessWidget {
                   color: MysticColors.outlineVariant.withOpacity(0.3),
                   width: 1.5),
             ),
-            focusedBorder: const UnderlineInputBorder(
+            focusedBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: MysticColors.primary, width: 1.5),
             ),
           ),
@@ -884,19 +893,4 @@ class _SaveButton extends StatelessWidget {
   }
 }
 
-// ── Category label extension ──────────────────────────────────────────────────
 
-extension _CategoryLabel on TransactionCategory {
-  String get pickerLabel {
-    switch (this) {
-      case TransactionCategory.food:          return 'Sustenance';
-      case TransactionCategory.transport:     return 'Carriage';
-      case TransactionCategory.utilities:     return 'The Hearth';
-      case TransactionCategory.entertainment: return 'Vices & Joy';
-      case TransactionCategory.tithe:         return 'Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Grimoire Sales';
-      case TransactionCategory.other:         return 'Miscellany';
-    }
-  }
-}

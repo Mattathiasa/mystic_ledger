@@ -28,7 +28,7 @@ class CapturedScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -103,7 +103,7 @@ class _EmptyQueue extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
       child: Column(
         children: [
-          const Icon(Icons.mark_email_unread_outlined,
+          Icon(Icons.mark_email_unread_outlined,
               size: 64, color: MysticColors.outlineVariant),
           const SizedBox(height: 20),
           Text('Nothing captured yet',
@@ -221,7 +221,7 @@ class _DraftCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.help_outline,
+                  Icon(Icons.help_outline,
                       size: 14, color: MysticColors.tertiary),
                   const SizedBox(width: 6),
                   Expanded(

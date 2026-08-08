@@ -44,6 +44,46 @@ class InsightsScreen extends StatefulWidget {
 class _InsightsScreenState extends State<InsightsScreen> {
   LedgerPeriod _period = LedgerPeriod.month;
 
+  /// Set when the user picks a custom date range; null otherwise. A non-null
+  /// value takes precedence over [_period].
+  DateTimeRange? _customRange;
+
+  /// The effective window: from the custom range when set, else the period.
+  DateTime? get _from =>
+      _customRange?.start ?? _period.startFrom(DateTime.now());
+  DateTime? get _to => _customRange?.end;
+
+  String get _windowLabel {
+    if (_customRange != null) {
+      final f = DateFormat('MMM d, yyyy').format(_customRange!.start);
+      final t = DateFormat('MMM d, yyyy').format(_customRange!.end);
+      return '$f – $t';
+    }
+    return _period.label;
+  }
+
+  /// The full range passed to the chart widgets, so they can render a custom
+  /// window instead of the preset one.
+  ({DateTime? from, DateTime? to}) get _range =>
+      (from: _from, to: _to);
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange: _customRange ?? DateTimeRange(start: now.subtract(const Duration(days: 30)), end: now),
+      helpText: 'Select a custom period',
+      saveText: 'Apply',
+    );
+    if (picked == null) return;
+    setState(() {
+      _customRange = picked;
+      _period = LedgerPeriod.month; // custom now drives the cards
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -52,12 +92,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
           if (svc.isLoading) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: MysticColors.primary));
           }
 
-          final from = _period.startFrom(DateTime.now());
-          final byCategory = svc.expensesByCategoryInRange(from: from);
+          final from = _from;
+          final to = _to;
+          final byCategory = svc.expensesByCategoryInRange(from: from, to: to);
           final hasAnything = svc.transactions.isNotEmpty;
 
           return SingleChildScrollView(
@@ -79,7 +120,12 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 // One control drives every card below it.
                 _PeriodSelector(
                   selected: _period,
-                  onChanged: (p) => setState(() => _period = p),
+                  customRange: _customRange,
+                  onChanged: (p) => setState(() {
+                    _period = p;
+                    _customRange = null;
+                  }),
+                  onCustom: _pickCustomRange,
                 ),
                 const SizedBox(height: 24),
 
@@ -90,19 +136,31 @@ class _InsightsScreenState extends State<InsightsScreen> {
                         'Add income or an expense and your reports appear here.',
                   )
                 else ...[
-                  _SummaryGrid(svc: svc, period: _period),
+                  _SummaryGrid(svc: svc, range: _range),
                   const SizedBox(height: 28),
-                  _TrendChart(svc: svc, period: _period),
+                  _TrendChart(
+                    svc: svc,
+                    range: _range,
+                    label: _windowLabel,
+                  ),
                   const SizedBox(height: 28),
-                  _BalanceLine(svc: svc, period: _period),
+                  _BalanceLine(
+                    svc: svc,
+                    range: _range,
+                    label: _windowLabel,
+                  ),
                   const SizedBox(height: 28),
                   _CategoryDonut(
                     svc: svc,
-                    period: _period,
+                    range: _range,
                     data: byCategory,
                   ),
                   const SizedBox(height: 28),
-                  _FeesCard(svc: svc, period: _period),
+                  _FeesCard(
+                    svc: svc,
+                    range: _range,
+                    label: _windowLabel,
+                  ),
                   const SizedBox(height: 28),
                   _AccountDistribution(svc: svc),
                 ],
@@ -119,8 +177,15 @@ class _InsightsScreenState extends State<InsightsScreen> {
 
 class _PeriodSelector extends StatelessWidget {
   final LedgerPeriod selected;
+  final DateTimeRange? customRange;
   final ValueChanged<LedgerPeriod> onChanged;
-  const _PeriodSelector({required this.selected, required this.onChanged});
+  final VoidCallback onCustom;
+  const _PeriodSelector({
+    required this.selected,
+    required this.customRange,
+    required this.onChanged,
+    required this.onCustom,
+  });
 
   static const _short = {
     LedgerPeriod.week:      'Week',
@@ -135,39 +200,82 @@ class _PeriodSelector extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: LedgerPeriod.values.map((p) {
-          final active = p == selected;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => onChanged(p),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 9),
-                decoration: BoxDecoration(
-                  color: active
-                      ? MysticColors.primary
-                      : MysticColors.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
+        children: [
+          ...LedgerPeriod.values.map((p) {
+            final active = p == selected && customRange == null;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => onChanged(p),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 9),
+                  decoration: BoxDecoration(
                     color: active
                         ? MysticColors.primary
-                        : MysticColors.outlineVariant.withOpacity(0.3),
+                        : MysticColors.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: active
+                          ? MysticColors.primary
+                          : MysticColors.outlineVariant.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Text(
+                    _short[p]!,
+                    style: labelStyle(10,
+                        letterSpacing: 1.0,
+                        color: active
+                            ? MysticColors.onPrimary
+                            : MysticColors.onSurfaceVariant),
                   ),
                 ),
-                child: Text(
-                  _short[p]!,
-                  style: labelStyle(10,
-                      letterSpacing: 1.0,
-                      color: active
-                          ? MysticColors.onPrimary
-                          : MysticColors.onSurfaceVariant),
+              ),
+            );
+          }),
+          // Custom period — the only option that opens a picker.
+          GestureDetector(
+            onTap: onCustom,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              decoration: BoxDecoration(
+                color: customRange != null
+                    ? MysticColors.primary
+                    : MysticColors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: customRange != null
+                      ? MysticColors.primary
+                      : MysticColors.outlineVariant.withOpacity(0.3),
                 ),
               ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.date_range,
+                    size: 13,
+                    color: customRange != null
+                        ? MysticColors.onPrimary
+                        : MysticColors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    customRange != null ? 'Custom' : 'Custom…',
+                    style: labelStyle(10,
+                        letterSpacing: 1.0,
+                        color: customRange != null
+                            ? MysticColors.onPrimary
+                            : MysticColors.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
-          );
-        }).toList(),
+          ),
+        ],
       ),
     );
   }
@@ -179,14 +287,14 @@ class _PeriodSelector extends StatelessWidget {
 /// monthly while expenses and balance were all-time.
 class _SummaryGrid extends StatelessWidget {
   final FinanceService svc;
-  final LedgerPeriod period;
-  const _SummaryGrid({required this.svc, required this.period});
+  final ({DateTime? from, DateTime? to}) range;
+  const _SummaryGrid({required this.svc, required this.range});
 
   @override
   Widget build(BuildContext context) {
-    final income   = svc.incomeIn(period);
-    final expenses = svc.expensesIn(period);
-    final fees     = svc.feesIn(period);
+    final income   = svc.incomeInRange(from: range.from, to: range.to);
+    final expenses = svc.expensesInRange(from: range.from, to: range.to);
+    final fees     = svc.feesInRange(from: range.from, to: range.to);
     final net      = income - expenses - fees;
     final cur      = svc.baseCurrency;
 
@@ -307,12 +415,17 @@ class _StatTile extends StatelessWidget {
 
 class _TrendChart extends StatelessWidget {
   final FinanceService svc;
-  final LedgerPeriod period;
-  const _TrendChart({required this.svc, required this.period});
+  final ({DateTime? from, DateTime? to}) range;
+  final String label;
+  const _TrendChart({required this.svc, required this.range, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    final buckets = svc.trendFor(period);
+    // A custom window buckets by calendar month; a preset period keeps its
+    // native granularity (days for a week, weeks for a month).
+    final buckets = (range.from != null && range.to != null)
+        ? svc.trendBetween(range.from!, range.to!)
+        : svc.trendFor(_periodFromRange());
     final maxV = buckets.fold<double>(
         0, (m, b) => [m, b.income, b.expenses].reduce((a, c) => a > c ? a : c));
     final yMax = maxV > 0 ? maxV * 1.25 : 1000.0;
@@ -320,7 +433,7 @@ class _TrendChart extends StatelessWidget {
     return _ChartCard(
       icon: Icons.bar_chart_rounded,
       title: 'Income vs Expenses',
-      subtitle: period.label,
+      subtitle: label,
       legend: const [
         _LegendDot(color: ChartPalette.green, label: 'Income'),
         _LegendDot(color: ChartPalette.red, label: 'Expenses'),
@@ -430,6 +543,21 @@ class _TrendChart extends StatelessWidget {
           topRight: Radius.circular(4),
         ),
       );
+
+  /// Backs the preset period out of the range: a custom range is the only
+  /// path where both bounds are set, so a lone `from` always maps back to a
+  /// period for bucketing.
+  LedgerPeriod _periodFromRange() {
+    final now = DateTime.now();
+    final from = range.from;
+    if (from == null) return LedgerPeriod.all;
+    // Match the exact period start so the label is honest.
+    for (final p in LedgerPeriod.values) {
+      final start = p.startFrom(now);
+      if (start != null && start.isAtSameMomentAs(from)) return p;
+    }
+    return LedgerPeriod.all;
+  }
 }
 
 String _compact(double v) {
@@ -442,17 +570,19 @@ String _compact(double v) {
 
 class _BalanceLine extends StatelessWidget {
   final FinanceService svc;
-  final LedgerPeriod period;
-  const _BalanceLine({required this.svc, required this.period});
+  final ({DateTime? from, DateTime? to}) range;
+  final String label;
+  const _BalanceLine(
+      {required this.svc, required this.range, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    final series = svc.balanceSeries(from: period.startFrom(DateTime.now()));
+    final series = svc.balanceSeries(from: range.from, to: range.to);
 
     return _ChartCard(
       icon: Icons.show_chart_rounded,
       title: 'Running Balance',
-      subtitle: 'Cumulative net position · ${period.label}',
+      subtitle: 'Cumulative net position · $label',
       child: series.length < 2
           ? const _InlineEmpty(
               message: 'At least two entries are needed to draw a trend.')
@@ -533,17 +663,18 @@ class _BalanceLine extends StatelessWidget {
             ),
     );
   }
+
 }
 
 // ── Category donut ────────────────────────────────────────────────────────────
 
 class _CategoryDonut extends StatefulWidget {
   final FinanceService svc;
-  final LedgerPeriod period;
+  final ({DateTime? from, DateTime? to}) range;
   final Map<TransactionCategory, double> data;
   const _CategoryDonut({
     required this.svc,
-    required this.period,
+    required this.range,
     required this.data,
   });
 
@@ -685,11 +816,14 @@ class _CategoryDonutState extends State<_CategoryDonut> {
   }
 
   void _openDrilldown(TransactionCategory category) {
-    final from = widget.period.startFrom(DateTime.now());
+    final from = widget.range.from;
+    final to = widget.range.to;
     final entries = widget.svc.transactions
         .where((t) => t.type == TransactionType.expense)
         .where((t) => t.category == category)
-        .where((t) => from == null || !t.date.isBefore(from))
+        .where((t) =>
+            (from == null || !t.date.isBefore(from)) &&
+            (to == null || t.date.isBefore(to)))
         .toList();
 
     showModalBottomSheet(
@@ -706,18 +840,7 @@ class _CategoryDonutState extends State<_CategoryDonut> {
   }
 }
 
-String _label(TransactionCategory cat) {
-  switch (cat) {
-    case TransactionCategory.food:          return 'Food';
-    case TransactionCategory.transport:     return 'Transport';
-    case TransactionCategory.utilities:     return 'Utilities';
-    case TransactionCategory.entertainment: return 'Entertainment';
-    case TransactionCategory.tithe:         return 'Tithe';
-    case TransactionCategory.salary:        return 'Salary';
-    case TransactionCategory.freelance:     return 'Freelance';
-    case TransactionCategory.other:         return 'Other';
-  }
-}
+String _label(TransactionCategory cat) => cat.label;
 
 // ── Drill-down sheet ──────────────────────────────────────────────────────────
 
@@ -743,9 +866,9 @@ class _DrilldownSheet extends StatelessWidget {
       initialChildSize: 0.6,
       maxChildSize: 0.9,
       builder: (context, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFFDFCF0),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: MysticColors.appBarBackground,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Column(
           children: [
@@ -847,19 +970,21 @@ class _DrilldownSheet extends StatelessWidget {
 
 class _FeesCard extends StatelessWidget {
   final FinanceService svc;
-  final LedgerPeriod period;
-  const _FeesCard({required this.svc, required this.period});
+  final ({DateTime? from, DateTime? to}) range;
+  final String label;
+  const _FeesCard(
+      {required this.svc, required this.range, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    final fees     = svc.feesIn(period);
-    final expenses = svc.expensesIn(period);
+    final fees     = svc.feesInRange(from: range.from, to: range.to);
+    final expenses = svc.expensesInRange(from: range.from, to: range.to);
     final share    = expenses > 0 ? (fees / (expenses + fees)) : 0.0;
 
     return _ChartCard(
       icon: Icons.percent_rounded,
       title: 'Lost to Fees',
-      subtitle: 'Bank and service charges · ${period.label}',
+      subtitle: 'Bank and service charges · $label',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

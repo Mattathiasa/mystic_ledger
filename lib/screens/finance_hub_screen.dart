@@ -370,11 +370,11 @@ class _AccountsList extends StatelessWidget {
   final NumberFormat fmt;
   const _AccountsList({required this.svc, required this.fmt});
 
-  static const _colors = [
-    MysticColors.primary,
-    MysticColors.secondary,
-    MysticColors.tertiary,
-  ];
+  static List<Color> get _colors => [
+        MysticColors.primary,
+        MysticColors.secondary,
+        MysticColors.tertiary,
+      ];
 
   @override
   Widget build(BuildContext context) {

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
+import '../services/rate_fetcher.dart';
 import '../models/currency_model.dart';
 
 /// Base currency and the exchange rates used to convert other currencies into
@@ -22,7 +23,7 @@ class CurrencySettingsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -94,11 +95,17 @@ class CurrencySettingsScreen extends StatelessWidget {
               ),
 
               const SizedBox(height: 32),
-              Text('EXCHANGE RATES',
-                  style: labelStyle(10,
-                      letterSpacing: 1.5,
-                      color:
-                          MysticColors.onSurfaceVariant.withOpacity(0.7))),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('EXCHANGE RATES',
+                      style: labelStyle(10,
+                          letterSpacing: 1.5,
+                          color: MysticColors.onSurfaceVariant
+                              .withOpacity(0.7))),
+                  _RefreshRatesButton(base: base, svc: svc),
+                ],
+              ),
               const SizedBox(height: 8),
               Text(
                 'What one unit of each currency is worth in $base. Used to '
@@ -139,6 +146,96 @@ class CurrencySettingsScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// ── Refresh rates button ──────────────────────────────────────────────────────
+
+/// Fetches live rates for [base] and writes them into the user's rate table
+/// (only for currencies the app actually offers — no point importing a table
+/// of 160 rows the user can never use).
+class _RefreshRatesButton extends StatefulWidget {
+  final String base;
+  final FinanceService svc;
+  const _RefreshRatesButton({required this.base, required this.svc});
+
+  @override
+  State<_RefreshRatesButton> createState() => _RefreshRatesButtonState();
+}
+
+class _RefreshRatesButtonState extends State<_RefreshRatesButton> {
+  bool _busy = false;
+
+  Future<void> _refresh() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+    void snack(String msg, Color color) => messenger.showSnackBar(SnackBar(
+          content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+          backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+
+    final result = await RateFetcher.fetch(baseCurrency: widget.base);
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    if (result == null) {
+      snack('Could not reach the rate service — try again later.',
+          MysticColors.tertiary);
+      return;
+    }
+
+    // Apply only the currencies this app recognises.
+    final offered = Currency.registry.map((c) => c.code).toSet();
+    var updated = 0;
+    for (final code in offered) {
+      final rate = result.ratesToBase[code];
+      if (rate == null || rate <= 0) continue;
+      if (code == widget.base) continue; // base is always 1.0
+      await widget.svc.setRate(code, rate);
+      updated++;
+    }
+    snack('Rates refreshed for $updated currencies.', MysticColors.secondary);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _busy ? null : _refresh,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: _busy
+              ? MysticColors.onSurface.withOpacity(0.08)
+              : MysticColors.primary,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: _busy
+            ? SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                    color: MysticColors.primary, strokeWidth: 2),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh,
+                      size: 13, color: MysticColors.onPrimary),
+                  const SizedBox(width: 5),
+                  Text('REFRESH RATES',
+                      style: labelStyle(9,
+                          letterSpacing: 1.0,
+                          color: MysticColors.onPrimary,
+                          weight: FontWeight.w700)),
+                ],
+              ),
       ),
     );
   }
@@ -235,7 +332,7 @@ class _RateRowState extends State<_RateRow> {
                           color: MysticColors.outlineVariant
                               .withOpacity(0.4)),
                     ),
-                    focusedBorder: const UnderlineInputBorder(
+                    focusedBorder: UnderlineInputBorder(
                       borderSide:
                           BorderSide(color: MysticColors.primary, width: 1.5),
                     ),

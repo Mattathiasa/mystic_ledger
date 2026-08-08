@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
@@ -24,6 +25,7 @@ class AddAccountScreen extends StatefulWidget {
 class _AddAccountScreenState extends State<AddAccountScreen> {
   final _formKey  = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
+  final _targetCtrl = TextEditingController();
   late AccountType _type = widget.initialType;
   // Defaults to the user's base currency; changeable here because after the
   // account has any entries the currency is locked (amounts are stored in it).
@@ -40,6 +42,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _targetCtrl.dispose();
     super.dispose();
   }
 
@@ -49,6 +52,11 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     final svc  = context.read<FinanceService>();
     final id   = '${_type.name}_${DateTime.now().millisecondsSinceEpoch}';
     final name = _nameCtrl.text.trim();
+
+    // Optional savings goal; only collected for savings vaults.
+    final targetText = _targetCtrl.text.trim().replaceAll(',', '');
+    final target =
+        targetText.isEmpty ? null : double.tryParse(targetText);
 
     // Captured before the pop — this screen is gone by the time a rejection
     // comes back from the server.
@@ -61,6 +69,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
           name: name,
           type: _type,
           currency: _currency,
+          targetAmount: _type == AccountType.savings ? target : null,
         ),
       ),
     );
@@ -86,7 +95,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
       child: Scaffold(
         backgroundColor: MysticColors.background,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFFDFCF0),
+          backgroundColor: MysticColors.appBarBackground,
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
@@ -182,7 +191,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                                       .withOpacity(0.3),
                                   width: 1.5),
                             ),
-                            focusedBorder: const UnderlineInputBorder(
+                            focusedBorder: UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: MysticColors.primary, width: 1.5),
                             ),
@@ -201,6 +210,75 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                             height: 1,
                             color: MysticColors.outlineVariant.withOpacity(0.2)),
                         const SizedBox(height: 24),
+
+                        // Savings goal
+                        if (_type == AccountType.savings) ...[
+                          Text('SAVINGS GOAL (OPTIONAL)',
+                              style: labelStyle(9,
+                                  letterSpacing: 1.5,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6))),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Text('$_currency ',
+                                  style: bodyStyle(18,
+                                      weight: FontWeight.w700,
+                                      color: MysticColors.primary
+                                          .withOpacity(0.7))),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _targetCtrl,
+                                  keyboardType: const TextInputType
+                                      .numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                        RegExp(r'[\d,.]')),
+                                  ],
+                                  style: bodyStyle(16, weight: FontWeight.w600),
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    hintText: 'e.g. 50000 for a laptop',
+                                    hintStyle:
+                                        bodyStyle(16, weight: FontWeight.w600)
+                                            .copyWith(
+                                                color: MysticColors.onSurface
+                                                    .withOpacity(0.25)),
+                                    contentPadding:
+                                        const EdgeInsets.only(bottom: 8),
+                                    isDense: true,
+                                    enabledBorder: UnderlineInputBorder(
+                                      borderSide: BorderSide(
+                                          color: MysticColors.outlineVariant
+                                              .withOpacity(0.3),
+                                          width: 1.5),
+                                    ),
+                                    focusedBorder: UnderlineInputBorder(
+                                      borderSide: BorderSide(
+                                          color: MysticColors.primary,
+                                          width: 1.5),
+                                    ),
+                                  ),
+                                  validator: (v) {
+                                    final t = v?.trim().replaceAll(',', '');
+                                    if (t == null || t.isEmpty) return null;
+                                    final p = double.tryParse(t);
+                                    if (p == null || p <= 0) {
+                                      return 'Enter a valid goal';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          Container(
+                              height: 1,
+                              color: MysticColors.outlineVariant
+                                  .withOpacity(0.2)),
+                          const SizedBox(height: 24),
+                        ],
 
                         // Account name
                         Text('ACCOUNT NAME',
@@ -228,7 +306,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                                       .withOpacity(0.3),
                                   width: 1.5),
                             ),
-                            focusedBorder: const UnderlineInputBorder(
+                            focusedBorder: UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: MysticColors.primary, width: 1.5),
                             ),

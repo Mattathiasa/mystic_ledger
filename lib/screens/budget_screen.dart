@@ -16,7 +16,7 @@ class BudgetScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -66,6 +66,7 @@ class BudgetScreen extends StatelessWidget {
                               ScaffoldMessenger.maybeOf(context),
                               svc.deleteBudget(b.id)),
                           onEdit: () => _showSheet(context, existing: b),
+                          onHistory: () => _showHistory(context, svc, b),
                         ),
                       )),
                 ],
@@ -93,6 +94,156 @@ class BudgetScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => _AddBudgetSheet(existing: existing),
     );
+  }
+
+  /// Past-period performance for one budget.
+  void _showHistory(BuildContext context, FinanceService svc, Budget budget) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BudgetHistorySheet(svc: svc, budget: budget),
+    );
+  }
+}
+
+// ── Budget history sheet ─────────────────────────────────────────────────────
+
+/// Shows how each past period fared against the limit — "last month I was
+/// under, the month before I blew it" — so the current card stops being a
+/// snapshot with no memory.
+class _BudgetHistorySheet extends StatelessWidget {
+  final FinanceService svc;
+  final Budget budget;
+  const _BudgetHistorySheet({required this.svc, required this.budget});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    final history = svc.budgetHistory(budget);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.85,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: MysticColors.appBarBackground,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: MysticColors.outlineVariant.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Budget History',
+                      style: headlineStyle(24,
+                          italic: true, weight: FontWeight.w900)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${budget.categoryLabel} · ${budget.periodLabel} · '
+                    'limit ${svc.baseCurrency} ${fmt.format(budget.amount)}',
+                    style: labelStyle(10,
+                        letterSpacing: 1.0,
+                        color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
+                  ),
+                ],
+              ),
+            ),
+            Divider(
+                height: 1,
+                color: MysticColors.outlineVariant.withOpacity(0.3)),
+            Expanded(
+              child: ListView.separated(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+                itemCount: history.length,
+                separatorBuilder: (_, __) => Divider(
+                  height: 18,
+                  color: MysticColors.outlineVariant.withOpacity(0.2),
+                ),
+                itemBuilder: (context, i) {
+                  final h = history[i];
+                  final pct = h.limit > 0 ? (h.spent / h.limit).clamp(0.0, 1.0) : 0.0;
+                  final color =
+                      h.over ? MysticColors.tertiary : MysticColors.secondary;
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _periodLabel(h.start, h.end),
+                              style: bodyStyle(14, weight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: LinearProgressIndicator(
+                                value: pct,
+                                minHeight: 6,
+                                backgroundColor:
+                                    MysticColors.outlineVariant.withOpacity(0.2),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(color),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              h.over
+                                  ? 'Over by ${svc.baseCurrency} '
+                                      '${fmt.format(h.spent - h.limit)}'
+                                  : '${fmt.format(h.spent)} of '
+                                      '${fmt.format(h.limit)} used',
+                              style: labelStyle(10,
+                                  letterSpacing: 0.3,
+                                  color: h.over
+                                      ? MysticColors.tertiary
+                                      : MysticColors.onSurfaceVariant
+                                          .withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${svc.baseCurrency} ${fmt.format(h.spent)}',
+                        style: bodyStyle(14,
+                            weight: FontWeight.w800,
+                            color: color),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _periodLabel(DateTime start, DateTime end) {
+    switch (budget.period) {
+      case BudgetPeriod.weekly:
+        return 'Week of ${DateFormat('MMM d').format(start)}';
+      case BudgetPeriod.monthly:
+        return DateFormat('MMMM yyyy').format(start);
+      case BudgetPeriod.yearly:
+        return '${start.year}';
+    }
   }
 }
 
@@ -146,6 +297,9 @@ class _BudgetCard extends StatelessWidget {
   /// Opens the budget for amendment. The delete icon keeps its own handler.
   final VoidCallback onEdit;
 
+  /// Opens the past-period history sheet.
+  final VoidCallback onHistory;
+
   const _BudgetCard({
     required this.budget,
     required this.spent,
@@ -153,6 +307,7 @@ class _BudgetCard extends StatelessWidget {
     required this.currency,
     required this.onDelete,
     required this.onEdit,
+    required this.onHistory,
   });
 
   @override
@@ -218,6 +373,13 @@ class _BudgetCard extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                icon: Icon(Icons.history,
+                    size: 20,
+                    color: MysticColors.primary.withOpacity(0.7)),
+                tooltip: 'Budget history',
+                onPressed: onHistory,
               ),
               IconButton(
                 icon: Icon(Icons.delete_outline,
@@ -325,16 +487,7 @@ class _BudgetCard extends StatelessWidget {
 
   IconData _budgetIcon(TransactionCategory? cat) {
     if (cat == null) return Icons.account_balance_wallet_outlined;
-    switch (cat) {
-      case TransactionCategory.food:          return Icons.restaurant_outlined;
-      case TransactionCategory.transport:     return Icons.directions_car_outlined;
-      case TransactionCategory.utilities:     return Icons.home_outlined;
-      case TransactionCategory.entertainment: return Icons.celebration_outlined;
-      case TransactionCategory.tithe:         return Icons.volunteer_activism_outlined;
-      case TransactionCategory.salary:        return Icons.work_outline;
-      case TransactionCategory.freelance:     return Icons.auto_stories_outlined;
-      case TransactionCategory.other:         return Icons.category_outlined;
-    }
+    return cat.icon;
   }
 }
 
@@ -510,14 +663,10 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
                   onTap: () => setState(() => _category = null),
                 ),
                 ...TransactionCategory.values
-                    .where((c) =>
-                        c == TransactionCategory.food ||
-                        c == TransactionCategory.transport ||
-                        c == TransactionCategory.utilities ||
-                        c == TransactionCategory.entertainment ||
-                        c == TransactionCategory.other)
+                    .where((c) => c != TransactionCategory.salary &&
+                        c != TransactionCategory.freelance)
                     .map((c) => _CatChip(
-                          label: Budget.catLabel(c),
+                          label: c.label,
                           selected: _category == c,
                           onTap: () => setState(() => _category = c),
                         )),
@@ -556,7 +705,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
                       color: MysticColors.outlineVariant.withOpacity(0.3),
                       width: 1.5),
                 ),
-                focusedBorder: const UnderlineInputBorder(
+                focusedBorder: UnderlineInputBorder(
                   borderSide:
                       BorderSide(color: MysticColors.primary, width: 1.5),
                 ),

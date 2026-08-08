@@ -26,12 +26,40 @@ class GivingScreen extends StatefulWidget {
 class _GivingScreenState extends State<GivingScreen> {
   LedgerPeriod _period = LedgerPeriod.all;
 
+  /// Set when the user picks a custom date range; null otherwise. Takes
+  /// precedence over [_period].
+  DateTimeRange? _customRange;
+
   String get _periodLabel {
+    if (_customRange != null) {
+      final f = DateFormat('MMM d, yyyy').format(_customRange!.start);
+      final t = DateFormat('MMM d, yyyy').format(_customRange!.end);
+      return '$f – $t'.toUpperCase();
+    }
     switch (_period) {
       case LedgerPeriod.week:  return 'THIS WEEK';
       case LedgerPeriod.month: return 'THIS MONTH';
       default:                 return 'ALL TIME';
     }
+  }
+
+  DateTime? get _from =>
+      _customRange?.start ?? _period.startFrom(DateTime.now());
+  DateTime? get _to => _customRange?.end;
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange:
+          _customRange ?? DateTimeRange(start: now.subtract(const Duration(days: 30)), end: now),
+      helpText: 'Select a giving period',
+      saveText: 'Apply',
+    );
+    if (picked == null) return;
+    setState(() => _customRange = picked);
   }
 
   @override
@@ -42,15 +70,18 @@ class _GivingScreenState extends State<GivingScreen> {
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
           if (svc.isLoading) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: MysticColors.primary));
           }
 
-          final income     = svc.incomeIn(_period);
-          final obligation = svc.titheObligation(_period);
-          final given      = svc.titheGiven(_period);
-          final remaining  = svc.titheRemaining(_period);
-          final progress   = svc.titheProgress(_period);
+          final income     = svc.incomeInRange(from: _from, to: _to);
+          final obligation = income * svc.titheRate;
+          final given      = computeTitheGiven(
+              svc.transactions, from: _from, to: _to);
+          final status     = TitheStatus.of(
+              income: income, given: given, rate: svc.titheRate);
+          final remaining  = status.remaining;
+          final progress   = status.progress;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 32, 24, 100),
@@ -61,7 +92,12 @@ class _GivingScreenState extends State<GivingScreen> {
                 const SizedBox(height: 24),
                 _PeriodToggle(
                   selected: _period,
-                  onChanged: (p) => setState(() => _period = p),
+                  customRange: _customRange,
+                  onChanged: (p) => setState(() {
+                    _period = p;
+                    _customRange = null;
+                  }),
+                  onCustom: _pickCustomRange,
                 ),
                 const SizedBox(height: 24),
                 _IncomeCard(
@@ -80,6 +116,12 @@ class _GivingScreenState extends State<GivingScreen> {
                   period: _period,
                   onEditRate: () => _editRate(svc),
                   onGive: remaining > 0 ? () => _give(svc, remaining) : null,
+                ),
+                const SizedBox(height: 24),
+                _GivingHistory(
+                  svc: svc,
+                  from: _from,
+                  to: _to,
                 ),
                 const SizedBox(height: 24),
                 _ArchivistNote(
@@ -188,8 +230,15 @@ class _GiveResult {
 
 class _PeriodToggle extends StatelessWidget {
   final LedgerPeriod selected;
+  final DateTimeRange? customRange;
   final ValueChanged<LedgerPeriod> onChanged;
-  const _PeriodToggle({required this.selected, required this.onChanged});
+  final VoidCallback onCustom;
+  const _PeriodToggle({
+    required this.selected,
+    required this.customRange,
+    required this.onChanged,
+    required this.onCustom,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -205,20 +254,26 @@ class _PeriodToggle extends StatelessWidget {
           _Tab(
             label: 'All Time',
             icon: Icons.all_inclusive,
-            active: selected == LedgerPeriod.all,
+            active: selected == LedgerPeriod.all && customRange == null,
             onTap: () => onChanged(LedgerPeriod.all),
           ),
           _Tab(
             label: 'Monthly',
             icon: Icons.calendar_month_outlined,
-            active: selected == LedgerPeriod.month,
+            active: selected == LedgerPeriod.month && customRange == null,
             onTap: () => onChanged(LedgerPeriod.month),
           ),
           _Tab(
             label: 'Weekly (Sunday)',
             icon: Icons.church_outlined,
-            active: selected == LedgerPeriod.week,
+            active: selected == LedgerPeriod.week && customRange == null,
             onTap: () => onChanged(LedgerPeriod.week),
+          ),
+          _Tab(
+            label: customRange != null ? 'Custom' : 'Custom…',
+            icon: Icons.date_range,
+            active: customRange != null,
+            onTap: onCustom,
           ),
         ],
       ),
@@ -327,7 +382,7 @@ class _IncomeCard extends StatelessWidget {
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
-            const BoxShadow(
+            BoxShadow(
               color: MysticColors.surfaceContainerLow,
               blurRadius: 0,
               offset: Offset(0, 10),
@@ -337,7 +392,7 @@ class _IncomeCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            const Positioned(
+            Positioned(
               right: 0,
               top: 0,
               child: Opacity(
@@ -363,7 +418,7 @@ class _IncomeCard extends StatelessWidget {
                             italic: false, weight: FontWeight.w900),
                       ),
                     ),
-                    const Icon(Icons.north_east,
+                    Icon(Icons.north_east,
                         color: MysticColors.secondary, size: 24),
                   ],
                 ),
@@ -447,7 +502,7 @@ class _TitheBreakdown extends StatelessWidget {
                 ),
                 transform: Matrix4.rotationZ(-0.052),
                 transformAlignment: Alignment.center,
-                child: const Icon(Icons.volunteer_activism,
+                child: Icon(Icons.volunteer_activism,
                     color: MysticColors.primary, size: 22),
               ),
               const SizedBox(width: 12),
@@ -478,7 +533,7 @@ class _TitheBreakdown extends StatelessWidget {
                               letterSpacing: 1.2,
                               color: MysticColors.onPrimary)),
                       const SizedBox(width: 4),
-                      const Icon(Icons.edit,
+                      Icon(Icons.edit,
                           size: 10, color: MysticColors.onPrimary),
                     ],
                   ),
@@ -529,7 +584,7 @@ class _TitheBreakdown extends StatelessWidget {
                   ),
                   child: Center(
                     child: settled
-                        ? const Icon(Icons.check,
+                        ? Icon(Icons.check,
                             color: MysticColors.secondary, size: 22)
                         : Text('${(progress * 100).round()}%',
                             style: labelStyle(11,
@@ -677,6 +732,148 @@ class _ProgressRingPainter extends CustomPainter {
       old.progress != progress || old.arc != arc || old.track != track;
 }
 
+// ── Giving history ────────────────────────────────────────────────────────────
+
+/// The individual tithe/giving expense entries for the selected period — "I
+/// gave ETB 500 on July 3rd, ETB 300 on July 18th." The aggregate cards above
+/// answer how much; this answers when and to what.
+class _GivingHistory extends StatelessWidget {
+  final FinanceService svc;
+  final DateTime? from;
+  final DateTime? to;
+  const _GivingHistory({required this.svc, required this.from, required this.to});
+
+  @override
+  Widget build(BuildContext context) {
+    // Local copies: field promotion does not apply inside closures, and
+    // `from`/`to` are fields.
+    final fromL = from;
+    final toL = to;
+    final entries = svc.transactions
+        .where((t) => t.type == TransactionType.expense)
+        .where((t) => t.category == TransactionCategory.tithe)
+        .where((t) =>
+            (fromL == null || !t.date.isBefore(fromL)) &&
+            (toL == null || t.date.isBefore(toL)))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    final fmt = NumberFormat('#,##0.00');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('HISTORY OF GIVING',
+                style: labelStyle(10,
+                    letterSpacing: 2.0,
+                    color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
+            if (entries.isNotEmpty)
+              Text('${entries.length} ENTR${entries.length == 1 ? 'Y' : 'IES'}',
+                  style: labelStyle(9,
+                      letterSpacing: 1.2,
+                      color: MysticColors.secondary)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: MysticColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: MysticColors.outlineVariant.withOpacity(0.15)),
+          ),
+          child: entries.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.volunteer_activism_outlined,
+                          size: 40, color: MysticColors.outlineVariant),
+                      const SizedBox(height: 10),
+                      Text(
+                        'No giving recorded for this period.',
+                        style: bodyStyle(12,
+                                color: MysticColors.onSurfaceVariant
+                                    .withOpacity(0.6))
+                            .copyWith(fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: entries.asMap().entries.map((e) {
+                    final t = e.value;
+                    final isLast = e.key == entries.length - 1;
+                    final account =
+                        svc.findAccount(t.accountId)?.name ?? t.accountId;
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 14),
+                      decoration: isLast
+                          ? null
+                          : BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                    color: MysticColors.outlineVariant
+                                        .withOpacity(0.2)),
+                              ),
+                            ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: MysticColors.secondary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(Icons.volunteer_activism,
+                                size: 18, color: MysticColors.secondary),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  t.title.isEmpty ? 'Giving' : t.title,
+                                  style: bodyStyle(14, weight: FontWeight.w700),
+                                ),
+                                Text(
+                                  '${DateFormat('MMM d, yyyy · h:mm a').format(t.date)}'
+                                  ' · $account'
+                                  '${t.note != null && t.note!.isNotEmpty ? ' · ${t.note}' : ''}',
+                                  style: labelStyle(9,
+                                      letterSpacing: 0.3,
+                                      color: MysticColors.onSurfaceVariant
+                                          .withOpacity(0.6)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '-${t.currency} ${fmt.format(t.amount)}'
+                            '${t.fee > 0 ? ' +${fmt.format(t.fee)} fee' : ''}',
+                            style: bodyStyle(14,
+                                weight: FontWeight.w800,
+                                color: MysticColors.secondary),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Give sheet ────────────────────────────────────────────────────────────────
 
 /// Collects the amount and the account it comes from, then the caller records
@@ -723,9 +920,9 @@ class _GiveSheetState extends State<_GiveSheet> {
 
     return Container(
       padding: EdgeInsets.fromLTRB(24, 28, 24, 24 + bottom),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFDFCF0),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: MysticColors.appBarBackground,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -905,7 +1102,7 @@ class _RateDialogState extends State<_RateDialog> {
                           color:
                               MysticColors.outlineVariant.withOpacity(0.4)),
                     ),
-                    focusedBorder: const UnderlineInputBorder(
+                    focusedBorder: UnderlineInputBorder(
                       borderSide: BorderSide(color: MysticColors.primary),
                     ),
                   ),
@@ -985,7 +1182,7 @@ class _ArchivistNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.history_edu,
+          Icon(Icons.history_edu,
               size: 40, color: MysticColors.primaryContainer),
           const SizedBox(width: 16),
           Expanded(

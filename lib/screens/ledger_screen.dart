@@ -5,6 +5,7 @@ import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
+import '../models/transaction.dart';
 import 'journal_screen.dart' show entrySlideUpRoute;
 import 'new_entry_screen.dart';
 import 'transfer_history_screen.dart';
@@ -23,15 +24,39 @@ enum _LedgerFilter { all, income, expense, transfer }
 
 class _LedgerScreenState extends State<LedgerScreen> {
   _LedgerFilter _filter = _LedgerFilter.all;
+  TransactionCategory? _category;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
   int _visibleCount = _pageSize;
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Applies the type filter, the optional category filter (only meaningful
+  /// for expenses), and the free-text search over title + note.
   List<LedgerEntry> _applyFilter(List<LedgerEntry> all) {
+    var out = all;
     switch (_filter) {
-      case _LedgerFilter.all:      return all;
-      case _LedgerFilter.income:   return all.where((e) => e.kind == LedgerEntryKind.income).toList();
-      case _LedgerFilter.expense:  return all.where((e) => e.kind == LedgerEntryKind.expense).toList();
-      case _LedgerFilter.transfer: return all.where((e) => e.kind == LedgerEntryKind.transfer).toList();
+      case _LedgerFilter.all:      break;
+      case _LedgerFilter.income:   out = out.where((e) => e.kind == LedgerEntryKind.income).toList();
+      case _LedgerFilter.expense:  out = out.where((e) => e.kind == LedgerEntryKind.expense).toList();
+      case _LedgerFilter.transfer: out = out.where((e) => e.kind == LedgerEntryKind.transfer).toList();
     }
+    if (_filter == _LedgerFilter.expense && _category != null) {
+      out = out.where((e) => e.category == _category).toList();
+    }
+    final q = _query.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      out = out
+          .where((e) =>
+              e.title.toLowerCase().contains(q) ||
+              (e.note?.toLowerCase().contains(q) ?? false))
+          .toList();
+    }
+    return out;
   }
 
   @override
@@ -42,7 +67,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
           if (svc.isLoading) {
-            return const Center(
+            return Center(
               child: CircularProgressIndicator(color: MysticColors.primary),
             );
           }
@@ -70,14 +95,33 @@ class _LedgerScreenState extends State<LedgerScreen> {
                             color: MysticColors.onSurfaceVariant
                                 .withOpacity(0.7)),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
+                      _SearchField(
+                        controller: _searchCtrl,
+                        onChanged: (v) => setState(() {
+                          _query = v;
+                          _visibleCount = _pageSize;
+                        }),
+                      ),
+                      const SizedBox(height: 16),
                       _FilterRow(
                         current: _filter,
                         onChanged: (f) => setState(() {
                           _filter = f;
+                          _category = null;
                           _visibleCount = _pageSize;
                         }),
                       ),
+                      if (_filter == _LedgerFilter.expense) ...[
+                        const SizedBox(height: 12),
+                        _CategoryRow(
+                          selected: _category,
+                          onChanged: (c) => setState(() {
+                            _category = c;
+                            _visibleCount = _pageSize;
+                          }),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -105,7 +149,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: MysticColors.primary,
-                          side: const BorderSide(
+                          side: BorderSide(
                               color: MysticColors.outlineVariant),
                           padding: const EdgeInsets.symmetric(
                               horizontal: 24, vertical: 12),
@@ -187,6 +231,123 @@ class _Chip extends StatelessWidget {
   }
 }
 
+// ── Search field ─────────────────────────────────────────────────────────────
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  const _SearchField({required this.controller, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      decoration: BoxDecoration(
+        color: MysticColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MysticColors.outlineVariant.withOpacity(0.25)),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: bodyStyle(15, weight: FontWeight.w600),
+        textCapitalization: TextCapitalization.sentences,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          isDense: true,
+          hintText: 'Search the archive…',
+          hintStyle: bodyStyle(15, color: MysticColors.onSurface.withOpacity(0.3))
+              .copyWith(fontStyle: FontStyle.italic),
+          icon: Icon(Icons.search,
+              size: 20, color: MysticColors.onSurfaceVariant),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : GestureDetector(
+                  onTap: () {
+                    controller.clear();
+                    onChanged('');
+                  },
+                  child: Icon(Icons.close,
+                      size: 18, color: MysticColors.onSurfaceVariant),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Category filter row (visible for Expense) ─────────────────────────────────
+
+class _CategoryRow extends StatelessWidget {
+  final TransactionCategory? selected;
+  final ValueChanged<TransactionCategory?> onChanged;
+  const _CategoryRow({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _CategoryChip(
+            label: 'All',
+            active: selected == null,
+            onTap: () => onChanged(null),
+          ),
+          for (final c in TransactionCategory.values) ...[const SizedBox(width: 8),
+            _CategoryChip(
+              label: c.label,
+              active: selected == c,
+              onTap: () => onChanged(c),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _CategoryChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? MysticColors.primary.withOpacity(0.14)
+              : MysticColors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active
+                ? MysticColors.primary.withOpacity(0.4)
+                : MysticColors.outlineVariant.withOpacity(0.2),
+          ),
+        ),
+        child: Text(
+          label.toUpperCase(),
+          style: labelStyle(9,
+              letterSpacing: 0.8,
+              color: active
+                  ? MysticColors.primary
+                  : MysticColors.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Ledger book container ─────────────────────────────────────────────────────
 
 class _LedgerBook extends StatelessWidget {
@@ -206,7 +367,7 @@ class _LedgerBook extends StatelessWidget {
         child: Center(
           child: Column(
             children: [
-              const Icon(Icons.auto_stories_outlined,
+              Icon(Icons.auto_stories_outlined,
                   size: 48, color: MysticColors.outlineVariant),
               const SizedBox(height: 12),
               Text('No entries found',
@@ -288,7 +449,7 @@ class _LedgerBook extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 24),
                     color: MysticColors.tertiary.withOpacity(0.15),
-                    child: const Icon(Icons.delete_outline,
+                    child: Icon(Icons.delete_outline,
                         color: MysticColors.tertiary, size: 24),
                   ),
                   confirmDismiss: (_) async {
@@ -452,6 +613,18 @@ class _LedgerRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (entry.note != null && entry.note!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    entry.note!,
+                    style: bodyStyle(11,
+                            color: MysticColors.onSurfaceVariant
+                                .withOpacity(0.55))
+                        .copyWith(fontStyle: FontStyle.italic),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),

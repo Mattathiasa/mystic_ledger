@@ -36,7 +36,7 @@ class _DebtScreenState extends State<DebtScreen>
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFDFCF0),
+        backgroundColor: MysticColors.appBarBackground,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -376,6 +376,33 @@ class _DebtCard extends StatelessWidget {
                   dateFmt.format(debt.date),
                   style: labelStyle(9, letterSpacing: 0.5),
                 ),
+                if (debt.dueDate != null) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        debt.isOverdue
+                            ? Icons.error_outline
+                            : Icons.event_outlined,
+                        size: 11,
+                        color: debt.isOverdue
+                            ? MysticColors.tertiary
+                            : MysticColors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        debt.isOverdue
+                            ? 'DUE ${DateFormat('MMM d').format(debt.dueDate!)} · OVERDUE'
+                            : 'Due ${DateFormat('MMM d, yyyy').format(debt.dueDate!)}',
+                        style: labelStyle(9,
+                            letterSpacing: 0.6,
+                            color: debt.isOverdue
+                                ? MysticColors.tertiary
+                                : MysticColors.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
                 if (debt.note != null && debt.note!.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -469,7 +496,7 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(32, 64, 32, 0),
         child: Column(
           children: [
-            const Icon(Icons.handshake_outlined,
+            Icon(Icons.handshake_outlined,
                 size: 56, color: MysticColors.outlineVariant),
             const SizedBox(height: 16),
             Text(
@@ -518,7 +545,7 @@ class _AddDebtFab extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
+            Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
             const SizedBox(width: 8),
             Text('ADD DEBT',
                 style: labelStyle(11,
@@ -558,6 +585,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
   final _noteCtrl  = TextEditingController();
 
   late DebtType _type;
+  DateTime? _dueDate;
 
   bool get _isEdit => widget.existing != null;
 
@@ -566,10 +594,31 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
     super.initState();
     final e = widget.existing;
     _type = e?.type ?? widget.initialType;
+    _dueDate = e?.dueDate;
     if (e == null) return;
     _nameCtrl.text = e.name;
     _amtCtrl.text  = e.amount.toStringAsFixed(2);
     _noteCtrl.text = e.note ?? '';
+  }
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate ?? now.add(const Duration(days: 30)),
+      firstDate: now.subtract(const Duration(days: 365 * 2)),
+      lastDate: now.add(Duration(days: 365 * 10)),
+      builder: (ctx, child) => Theme(
+        data: ThemeData(
+          colorScheme: ColorScheme.light(
+            primary: MysticColors.primary,
+            surface: MysticColors.surfaceContainerLow,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) setState(() => _dueDate = picked);
   }
 
   @override
@@ -599,6 +648,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
           // false — so amending a settled debt would quietly un-settle it and
           // put it back in the outstanding totals.
           date: existing?.date ?? DateTime.now(),
+          dueDate: _dueDate,
           isPaid: existing?.isPaid ?? false,
           note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
         ),
@@ -614,7 +664,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: MysticColors.surfaceContainerLow,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(28),
@@ -688,7 +738,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                         color: MysticColors.outlineVariant.withOpacity(0.3),
                         width: 1.5),
                   ),
-                  focusedBorder: const UnderlineInputBorder(
+                  focusedBorder: UnderlineInputBorder(
                     borderSide:
                         BorderSide(color: MysticColors.primary, width: 1.5),
                   ),
@@ -748,6 +798,66 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                   color: MysticColors.outlineVariant.withOpacity(0.3)),
               const SizedBox(height: 16),
 
+              // Due date
+              Text('DUE DATE (OPTIONAL)',
+                  style: labelStyle(9,
+                      letterSpacing: 1.5,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _pickDueDate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: MysticColors.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _dueDate == null
+                          ? MysticColors.outlineVariant.withOpacity(0.3)
+                          : MysticColors.primary.withOpacity(0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 14),
+                      Icon(
+                        _dueDate == null
+                            ? Icons.event_outlined
+                            : Icons.event_available,
+                        size: 18,
+                        color: _dueDate == null
+                            ? MysticColors.onSurfaceVariant
+                            : MysticColors.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _dueDate == null
+                            ? 'No deadline set'
+                            : DateFormat('EEE, MMM d, yyyy')
+                                .format(_dueDate!),
+                        style: bodyStyle(14,
+                            weight: FontWeight.w600,
+                            color: _dueDate == null
+                                ? MysticColors.onSurfaceVariant
+                                : null),
+                      ),
+                      const Spacer(),
+                      if (_dueDate != null)
+                        GestureDetector(
+                          onTap: () => setState(() => _dueDate = null),
+                          child: Padding(
+                            padding: EdgeInsets.only(right: 12),
+                            child: Icon(Icons.close,
+                                size: 16,
+                                color: MysticColors.onSurfaceVariant),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
               // Note
               Text('NOTE (OPTIONAL)',
                   style: labelStyle(9,
@@ -772,7 +882,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                         color: MysticColors.outlineVariant.withOpacity(0.3),
                         width: 1.5),
                   ),
-                  focusedBorder: const UnderlineInputBorder(
+                  focusedBorder: UnderlineInputBorder(
                     borderSide:
                         BorderSide(color: MysticColors.primary, width: 1.5),
                   ),
