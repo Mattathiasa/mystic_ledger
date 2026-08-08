@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:telephony/telephony.dart';
 import 'sms_capture_store.dart';
-import 'telebirr_parser.dart';
+import 'sms_parser.dart';
 
 /// Background-isolate handler for the `telephony` plugin.
 ///
@@ -119,15 +119,24 @@ class SmsCaptureService extends ChangeNotifier {
 
     try {
       final telephony = Telephony.instance;
-      final byBody = await telephony.getInboxSms(
+      // Alerts may carry the brand in the body, the sender field, or both;
+      // detectBank does the precise filtering once the candidates arrive.
+      final byTelebirr = await telephony.getInboxSms(
         filter: SmsFilter.where(SmsColumn.BODY).like('%telebirr%'),
       );
-      final bySender = await telephony.getInboxSms(
+      final byCbe = await telephony.getInboxSms(
+        filter: SmsFilter.where(SmsColumn.BODY).like('%cbe%'),
+      );
+      final byTelebirrSender = await telephony.getInboxSms(
         filter: SmsFilter.where(SmsColumn.ADDRESS).equals('Telebirr'),
+      );
+      final byCbeSender = await telephony.getInboxSms(
+        filter: SmsFilter.where(SmsColumn.ADDRESS).equals('CBE'),
       );
 
       var added = 0;
-      for (final m in {...byBody, ...bySender}) {
+      for (final m
+          in {...byTelebirr, ...byCbe, ...byTelebirrSender, ...byCbeSender}) {
         final draft = await SmsCaptureStore.captureIncoming(
           id: m.id?.toString(),
           sender: m.address ?? '',

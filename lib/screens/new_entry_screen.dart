@@ -6,7 +6,7 @@ import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
-import '../services/telebirr_parser.dart';
+import '../services/sms_parser.dart';
 import '../models/transaction.dart';
 import '../models/account_model.dart';
 
@@ -62,11 +62,17 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     if (d != null) {
       if (d.amount != null) _amountCtrl.text = d.amount!.toStringAsFixed(2);
       if (d.fee != null) _feeCtrl.text = d.fee!.toStringAsFixed(2);
-      _titleCtrl.text = d.counterparty ?? 'Telebirr';
+      _titleCtrl.text = d.counterparty ?? d.bank.label;
       _type = switch (d.direction) {
         CapturedDirection.income => TransactionType.income,
         _                        => TransactionType.expense,
       };
+      // A CBE credit from the salary suspense account can skip the category
+      // picker — the one thing nobody ever changes.
+      _category = (d.direction == CapturedDirection.income &&
+              (d.counterparty ?? '').toUpperCase().contains('SALARY'))
+          ? TransactionCategory.salary
+          : TransactionCategory.other;
       if (d.reference != null) _noteCtrl.text = 'Ref: ${d.reference}';
     }
   }

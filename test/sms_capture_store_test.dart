@@ -18,10 +18,10 @@ void main() {
     expect(await SmsCaptureStore.loadDrafts(), isEmpty);
   });
 
-  test('captureIncoming ignores messages that are not Telebirr', () async {
+  test('captureIncoming ignores messages from unknown banks', () async {
     await SmsCaptureStore.setEnabled(true);
     final draft = await SmsCaptureStore.captureIncoming(
-      sender: 'CBE',
+      sender: 'AWASH',
       body: 'Your account was credited with ETB 900.',
     );
     expect(draft, isNull);

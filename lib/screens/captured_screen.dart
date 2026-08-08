@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/sms_capture_service.dart';
-import '../services/telebirr_parser.dart';
+import '../services/sms_parser.dart';
 import '../widgets/app_theme.dart';
 import 'journal_screen.dart'; // entrySlideUpRoute
 import 'new_entry_screen.dart';
@@ -112,12 +112,11 @@ class _EmptyQueue extends StatelessWidget {
           Text(
             svc.supported
                 ? svc.isEnabled
-                    ? 'Telebirr transaction alerts will appear here the moment '
-                        'they arrive. You can also scan your inbox to pull in '
-                        'older ones.'
-                    : 'Turn on auto-capture in Profile, then Telebirr alerts '
-                        'will queue here for your review before they are '
-                        'recorded.'
+                    ? 'Telebirr and CBE transaction alerts will appear here '
+                        'the moment they arrive. You can also scan your inbox '
+                        'to pull in older ones.'
+                    : 'Turn on auto-capture in Profile, then bank alerts will '
+                        'queue here for your review before they are recorded.'
                 : 'SMS auto-capture is available on Android. On other '
                     'platforms, entries are written by hand.',
             textAlign: TextAlign.center,
@@ -204,7 +203,7 @@ class _DraftCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${draft.directionLabel}${draft.fee != null ? '  ·  fee ETB ${fmt.format(draft.fee)}' : ''}',
+                        '${draft.directionLabel}  ·  ${draft.bank.label}${draft.fee != null ? '  ·  fee ETB ${fmt.format(draft.fee)}' : ''}',
                         style: bodyStyle(13,
                             weight: FontWeight.w600, color: accent),
                       ),
@@ -214,6 +213,28 @@ class _DraftCard extends StatelessWidget {
                 _ConfidenceBadge(confidence: draft.confidence),
               ],
             ),
+            // An own-account transfer (e.g. CBE: account → account) is
+            // neither income nor expense. Say so plainly so nobody records it
+            // as a spurious expense.
+            if (unknown) ...[
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.help_outline,
+                      size: 14, color: MysticColors.tertiary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Direction unclear — check the message before recording. '
+                      'A transfer between your own accounts is not income or '
+                      'expense.',
+                      style: bodyStyle(11, color: MysticColors.tertiary),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 14),
 
             // Counterparty / who

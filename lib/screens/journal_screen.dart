@@ -132,7 +132,7 @@ class _CaptureBanner extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Captured from Telebirr — review before they enter the ledger',
+                          'Captured from Telebirr & CBE — review before they enter the ledger',
                           style: bodyStyle(12,
                               color: MysticColors.onSurfaceVariant
                                   .withOpacity(0.75)),

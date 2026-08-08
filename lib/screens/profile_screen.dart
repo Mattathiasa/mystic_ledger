@@ -594,7 +594,7 @@ class _CaptureCard extends StatelessWidget {
     messenger.showSnackBar(SnackBar(
       content: Text(
         granted
-            ? 'SMS access granted — Telebirr alerts will be captured.'
+            ? 'SMS access granted — Telebirr and CBE alerts will be captured.'
             : 'SMS access was denied. Auto-capture needs it to read alerts.',
         style: bodyStyle(13, color: Colors.white),
       ),
@@ -665,7 +665,7 @@ class _CaptureCard extends StatelessWidget {
                                   color: MysticColors.onSurfaceVariant
                                       .withOpacity(0.6))),
                           const SizedBox(height: 2),
-                          Text('Telebirr transaction alerts',
+                          Text('Telebirr & CBE alerts',
                               style: bodyStyle(14, weight: FontWeight.w600)),
                         ],
                       ),
@@ -693,9 +693,10 @@ class _CaptureCard extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: Text(
                   svc.supported
-                      ? 'Incoming Telebirr alerts are read on this phone, parsed, '
-                          'and queued for your review — nothing is recorded '
-                          'without you, and raw messages never leave the device.'
+                      ? 'Incoming Telebirr and CBE alerts are read on this '
+                          'phone, parsed, and queued for your review — nothing '
+                          'is recorded without you, and raw messages never '
+                          'leave the device.'
                       : 'SMS auto-capture is available on Android only.',
                   style: bodyStyle(12,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.75)),
@@ -715,7 +716,7 @@ class _CaptureCard extends StatelessWidget {
                 _CaptureAction(
                   icon: Icons.history,
                   label: 'Scan inbox for past messages',
-                  subtitle: 'Pulls earlier Telebirr alerts into the queue',
+                  subtitle: 'Pulls earlier Telebirr & CBE alerts into the queue',
                   onTap: () => _backfill(context),
                 ),
                 _CaptureAction(

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'telebirr_parser.dart';
+import 'sms_parser.dart';
 
 /// On-device persistence for SMS auto-capture.
 ///
@@ -98,14 +98,16 @@ class SmsCaptureStore {
     DateTime? date,
   }) async {
     if (!await isEnabled()) return null;
-    if (!looksLikeTelebirr(sender: sender, body: body)) return null;
+    final bank = detectBank(sender: sender, body: body);
+    if (bank == null) return null;
 
     final signature = smsSignature(id: id, sender: sender, body: body);
     if (await isProcessed(signature)) return null;
 
-    final parsed = parseTelebirrSms(body);
+    final parsed = parseSms(bank, body);
     final draft = CapturedSms(
       id: signature,
+      bank: bank,
       sender: sender,
       body: body,
       amount: parsed.amount,
