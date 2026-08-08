@@ -13,12 +13,16 @@ class Account {
   /// against it are stored in this currency.
   final String currency;
 
+  /// Optional savings goal, in [currency]. Only meaningful for savings vaults.
+  final double? targetAmount;
+
   const Account({
     required this.id,
     required this.name,
     required this.type,
     this.isActive = true,
     this.currency = Currency.defaultCode,
+    this.targetAmount,
   });
 
   // ── Firestore serialisation ──────────────────────────────────────────────
@@ -29,6 +33,7 @@ class Account {
         'type':     type.name,
         'isActive': isActive,
         'currency': currency,
+        'targetAmount': targetAmount,
       };
 
   factory Account.fromMap(Map<String, dynamic> m) => Account(
@@ -41,6 +46,7 @@ class Account {
         isActive: m['isActive'] as bool? ?? true,
         // Documents written before multi-currency have no code — they are ETB.
         currency: m['currency'] as String? ?? Currency.defaultCode,
+        targetAmount: (m['targetAmount'] as num?)?.toDouble(),
       );
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -69,12 +75,14 @@ class Account {
     AccountType? type,
     bool? isActive,
     String? currency,
+    double? targetAmount,
   }) =>
       Account(
-        id:       id       ?? this.id,
-        name:     name     ?? this.name,
-        type:     type     ?? this.type,
-        isActive: isActive ?? this.isActive,
-        currency: currency ?? this.currency,
+        id:           id           ?? this.id,
+        name:         name         ?? this.name,
+        type:         type         ?? this.type,
+        isActive:     isActive     ?? this.isActive,
+        currency:     currency     ?? this.currency,
+        targetAmount: targetAmount ?? this.targetAmount,
       );
 }

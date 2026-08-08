@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/recurring_transaction.dart';
+import '../models/transaction.dart';
 import 'sms_parser.dart';
 
 /// On-device persistence for SMS auto-capture.
@@ -84,6 +86,34 @@ class SmsCaptureStore {
     final trimmed = set.length > 5000 ? set.take(5000).toSet() : set;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_kProcessed, trimmed.toList());
+  }
+
+  /// Queues a draft for a recurring schedule that has come due.
+  ///
+  /// Presented through the same review queue as SMS captures (same banner,
+  /// same RECORD flow). The id encodes the occurrence date, so re-running a
+  /// check (another resume, a refresh) can never queue the same occurrence
+  /// twice. Returns true when the draft was newly queued.
+  static Future<bool> addRecurringDraft(RecurringTransaction r) async {
+    final draft = CapturedSms(
+      id: 'recurring:${r.id}:${r.nextDue.millisecondsSinceEpoch}',
+      bank: CapturedBank.recurring,
+      sender: 'Recurring',
+      body:
+          'Recurring: ${r.title} — ${r.frequency.label} · next due '
+          '${r.nextDue.toString()} — review before recording.',
+      amount: r.amount,
+      direction: r.type == TransactionType.income
+          ? CapturedDirection.income
+          : CapturedDirection.expense,
+      counterparty: r.title,
+      fee: null,
+      reference: null,
+      date: r.nextDue,
+      capturedAt: DateTime.now(),
+      confidence: SmsConfidence.high,
+    );
+    return addDraft(draft);
   }
 
   /// Full pipeline for a raw incoming SMS: gate, dedup, parse, queue.

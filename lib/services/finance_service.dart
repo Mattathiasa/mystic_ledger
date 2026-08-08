@@ -8,6 +8,10 @@ import '../models/transfer_model.dart';
 import '../models/debt_model.dart';
 import '../models/budget_model.dart';
 import '../models/app_settings.dart';
+import '../models/recurring_transaction.dart';
+import 'notification_service.dart';
+import 'sms_capture_service.dart';
+import 'sms_capture_store.dart';
 
 /// Time windows shared by the Giving and Insights screens.
 enum LedgerPeriod { week, month, sixMonths, year, all }
@@ -58,6 +62,7 @@ class FinanceService extends ChangeNotifier {
   CollectionReference get _transfers    => _db.collection('users/$userId/transfers');
   CollectionReference get _debts        => _db.collection('users/$userId/debts');
   CollectionReference get _budgets      => _db.collection('users/$userId/budgets');
+  CollectionReference get _recurring    => _db.collection('users/$userId/recurring');
   DocumentReference    get _settingsDoc => _db.doc('users/$userId/settings/prefs');
 
   // ── Local caches (updated by Firestore stream listeners) ──────────────────
@@ -66,6 +71,7 @@ class FinanceService extends ChangeNotifier {
   List<Transfer>    _transferList    = [];
   List<Debt>        _debtList        = [];
   List<Budget>      _budgetList      = [];
+  List<RecurringTransaction> _recurringList = [];
   AppSettings       _settings        = const AppSettings();
   bool _isLoading = true;
 
@@ -195,6 +201,15 @@ class FinanceService extends ChangeNotifier {
       _checkLoaded();
     }));
 
+    // Recurring transactions
+    _subs.add(_recurring.snapshots().listen((snap) {
+      _recurringList = snap.docs
+          .map((d) =>
+              RecurringTransaction.fromMap(d.data() as Map<String, dynamic>))
+          .toList();
+      _checkLoaded();
+    }));
+
     // Settings (base currency, tithe rate, exchange rates).
     // A user who has never opened settings has no doc — defaults apply.
     _subs.add(_settingsDoc.snapshots().listen((snap) {
@@ -207,7 +222,7 @@ class FinanceService extends ChangeNotifier {
 
   /// Number of streams opened in [_subscribe]; loading ends once each has
   /// delivered at least one snapshot.
-  static const int _streamCount = 6;
+  static const int _streamCount = 7;
 
   int _loadedCount = 0;
   void _checkLoaded() {
@@ -327,8 +342,28 @@ class FinanceService extends ChangeNotifier {
   // ── READ: Debts ───────────────────────────────────────────────────────────
 
   List<Debt> get debts      => List.unmodifiable(_debtList);
-  List<Debt> get iOwe       => _debtList.where((d) => d.type == DebtType.owe  && !d.isPaid).toList();
-  List<Debt> get owedToMe   => _debtList.where((d) => d.type == DebtType.owed && !d.isPaid).toList();
+
+  /// Outstanding debts, soonest-due first. Debts without a due date trail
+  /// behind dated ones (a deadline you can't see should not outrank one you
+  /// can), keeping a stable order otherwise.
+  static List<Debt> _sortByDue(List<Debt> debts) {
+    final copy = [...debts];
+    copy.sort((a, b) {
+      final da = a.dueDate;
+      final db = b.dueDate;
+      if (da == null && db == null) return b.date.compareTo(a.date);
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da.compareTo(db);
+    });
+    return copy;
+  }
+
+  /// Outstanding debts, soonest-due first.
+  List<Debt> get iOwe     => _sortByDue(
+      _debtList.where((d) => d.type == DebtType.owe  && !d.isPaid).toList());
+  List<Debt> get owedToMe => _sortByDue(
+      _debtList.where((d) => d.type == DebtType.owed && !d.isPaid).toList());
 
   // ── CURRENCY ──────────────────────────────────────────────────────────────
 
@@ -442,63 +477,30 @@ class FinanceService extends ChangeNotifier {
     return result;
   }
 
+  /// Income/expense buckets for an arbitrary date range, one per calendar
+  /// month — used by the Insights screen's custom-period mode.
+  List<TrendBucket> trendBetween(DateTime from, DateTime to) =>
+      computeTrendBetween(
+        from,
+        to,
+        (s, e) => incomeInRange(from: s, to: e),
+        (s, e) => expensesInRange(from: s, to: e),
+        (s, e) => feesInRange(from: s, to: e),
+      );
+
   /// Income/expense buckets sized to [period] — days for a week, weeks for a
   /// month, months for longer spans — so the trend chart always shows a
   /// meaningful number of bars.
   List<TrendBucket> trendFor(LedgerPeriod period) {
     final now = DateTime.now();
-    final buckets = <TrendBucket>[];
-
-    void add(String label, DateTime start, DateTime end) {
-      buckets.add(TrendBucket(
-        label:    label,
-        start:    start,
-        income:   incomeInRange(from: start, to: end),
-        expenses: expensesInRange(from: start, to: end),
-        fees:     feesInRange(from: start, to: end),
-      ));
-    }
-
-    switch (period) {
-      case LedgerPeriod.week:
-        final monday = now.subtract(Duration(days: now.weekday - 1));
-        final start  = DateTime(monday.year, monday.month, monday.day);
-        const names  = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-        for (var i = 0; i < 7; i++) {
-          final d = start.add(Duration(days: i));
-          add(names[i], d, d.add(const Duration(days: 1)));
-        }
-      case LedgerPeriod.month:
-        final start = DateTime(now.year, now.month, 1);
-        final next  = DateTime(now.year, now.month + 1, 1);
-        var weekStart = start;
-        var w = 1;
-        while (weekStart.isBefore(next)) {
-          var weekEnd = weekStart.add(const Duration(days: 7));
-          if (weekEnd.isAfter(next)) weekEnd = next;
-          add('W$w', weekStart, weekEnd);
-          weekStart = weekEnd;
-          w++;
-        }
-      case LedgerPeriod.sixMonths:
-      case LedgerPeriod.year:
-      case LedgerPeriod.all:
-        final count = period == LedgerPeriod.sixMonths ? 6 : 12;
-        for (var i = count - 1; i >= 0; i--) {
-          final target = DateTime(now.year, now.month - i, 1);
-          final start  = DateTime(target.year, target.month, 1);
-          final end    = DateTime(target.year, target.month + 1, 1);
-          add(_monthAbbr(start.month), start, end);
-        }
-    }
-    return buckets;
+    return computeTrendFor(
+      period,
+      now,
+      (s, e) => incomeInRange(from: s, to: e),
+      (s, e) => expensesInRange(from: s, to: e),
+      (s, e) => feesInRange(from: s, to: e),
+    );
   }
-
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  static String _monthAbbr(int m) => _months[(m - 1) % 12];
 
   Map<TransactionCategory, double> get expensesByCategory =>
       expensesByCategoryInRange();
@@ -669,6 +671,114 @@ class FinanceService extends ChangeNotifier {
     return saveSettings(_settings.copyWith(rates: next));
   }
 
+  // ── READ: Recurring transactions ──────────────────────────────────────────
+
+  List<RecurringTransaction> get recurring =>
+      List.unmodifiable(_recurringList);
+
+  /// Active schedules, soonest-due first — for the management screen.
+  List<RecurringTransaction> get activeRecurring {
+    final list =
+        _recurringList.where((r) => r.isActive).toList()
+      ..sort((a, b) => a.nextDue.compareTo(b.nextDue));
+    return list;
+  }
+
+  /// Checks every active schedule on app resume and queues a review-queue
+  /// draft for each one whose [RecurringTransaction.nextDue] has passed, then
+  /// advances that schedule to its next occurrence.
+  ///
+  /// The draft id encodes the occurrence date, so an identical re-check is a
+  /// harmless no-op. Returns how many proposals were queued.
+  Future<int> proposeDueRecurring() async {
+    if (_recurringList.isEmpty) return 0;
+    final now = DateTime.now();
+    final due = _recurringList
+        .where((r) => r.isActive && !r.nextDue.isAfter(now))
+        .toList();
+    var proposed = 0;
+    for (final r in due) {
+      final queued = await SmsCaptureStore.addRecurringDraft(r);
+      if (queued) proposed++;
+      // Advance to the next occurrence — a schedule stays live, only its
+      // due date moves forward. Fire-and-forget; a failed write is corrected
+      // on the next resume.
+      await _recurring.doc(r.id).update({
+        'nextDue': Timestamp.fromDate(r.nextOccurrence(now)),
+      }).catchError((_) {});
+    }
+    if (proposed > 0) {
+      // Re-read so the banner and review count are current.
+      await SmsCaptureService.instance.refresh();
+    }
+    return proposed;
+  }
+
+  // ── LOCAL ALERTS ──────────────────────────────────────────────────────────
+
+  /// (Re)arms local notifications from the current data. Called on resume so
+  /// alerts stay in step with budgets, debts and schedules. Scheduling is
+  /// idempotent — stable ids replace, never duplicate.
+  Future<void> rearmNotifications() async {
+    final n = NotificationService.instance;
+    if (!n.isEnabled || n.supported == false) return;
+
+    // Budgets: alert at the end of the current period.
+    final now = DateTime.now();
+    for (final b in _budgetList) {
+      final spent = spentInPeriod(b);
+      final periodEnd = _budgetPeriodEnd(b, now);
+      await n.scheduleBudgetAlerts(
+        budgetId: b.id,
+        spent: spent,
+        limit: b.amount,
+        periodEnd: periodEnd,
+      );
+    }
+
+    // Debts: reminders the day before and on the due day.
+    for (final d in _debtList) {
+      final due = d.dueDate;
+      if (due == null || d.isPaid) continue;
+      if (due.isBefore(now)) continue; // already past — no point nagging
+      await n.scheduleDebtReminder(
+          debtId: d.id, name: d.name, dueDate: due);
+    }
+
+    // Tithe: last day of the current month.
+    await n.scheduleTitheReminder(now);
+
+    // Recurring: prompt on the due day.
+    for (final r in _recurringList) {
+      if (!r.isActive) continue;
+      await n.scheduleRecurringPrompt(
+          recurringId: r.id, title: r.title, nextDue: r.nextDue);
+    }
+  }
+
+  static DateTime _budgetPeriodEnd(Budget b, DateTime now) {
+    switch (b.period) {
+      case BudgetPeriod.weekly:
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        return DateTime(monday.year, monday.month, monday.day + 7);
+      case BudgetPeriod.monthly:
+        return DateTime(now.year, now.month + 1, 1);
+      case BudgetPeriod.yearly:
+        return DateTime(now.year + 1, 1, 1);
+    }
+  }
+
+  // ── WRITE: Recurring transactions ─────────────────────────────────────────
+
+  /// Upsert — re-saving with an existing id edits that schedule in place.
+  Future<void> addRecurring(RecurringTransaction r) =>
+      _recurring.doc(r.id).set(r.toMap());
+
+  Future<void> deleteRecurring(String id) => _recurring.doc(id).delete();
+
+  Future<void> toggleRecurring(String id, bool isActive) =>
+      _recurring.doc(id).update({'isActive': isActive});
+
   // ── WRITE: Debts ──────────────────────────────────────────────────────────
 
   /// Upsert — re-saving with an existing id edits that debt in place.
@@ -697,6 +807,10 @@ class FinanceService extends ChangeNotifier {
   Future<void> renameAccount(String id, String name) =>
       _accounts.doc(id).update({'name': name});
 
+  /// Sets or clears a savings goal on [id]. Null clears the goal.
+  Future<void> setAccountTarget(String id, double? target) =>
+      _accounts.doc(id).update({'targetAmount': target});
+
   /// True once anything has been recorded against [id].
   ///
   /// Amounts are stored in the account's own currency, so changing the
@@ -720,26 +834,69 @@ class FinanceService extends ChangeNotifier {
   List<Budget> get budgets => List.unmodifiable(_budgetList);
 
   /// How much has been spent so far in the budget's current period.
-  double spentInPeriod(Budget budget) {
-    final now = DateTime.now();
-    late DateTime periodStart;
+  double spentInPeriod(Budget budget) => spentInRange(
+      budget,
+      from: _budgetPeriodStart(budget, DateTime.now()),
+      to: null,
+    );
+
+  /// How much was spent against [budget] between [from] (inclusive) and [to]
+  /// (exclusive). Null bounds mean unbounded — used for the current period and
+  /// for past-period history.
+  double spentInRange(Budget budget, {DateTime? from, DateTime? to}) =>
+      computeSpentAgainstBudget(_transactionList, budget, from: from, to: to);
+
+  /// The start of the period that contains [now], for [budget].
+  static DateTime _budgetPeriodStart(Budget budget, DateTime now) {
     switch (budget.period) {
       case BudgetPeriod.weekly:
-        // Start of current week (Monday)
         final daysFromMonday = now.weekday - 1;
         final monday = now.subtract(Duration(days: daysFromMonday));
-        periodStart = DateTime(monday.year, monday.month, monday.day);
+        return DateTime(monday.year, monday.month, monday.day);
       case BudgetPeriod.monthly:
-        periodStart = DateTime(now.year, now.month, 1);
+        return DateTime(now.year, now.month, 1);
       case BudgetPeriod.yearly:
-        periodStart = DateTime(now.year, 1, 1);
+        return DateTime(now.year, 1, 1);
     }
-    // Budgets are denominated in the base currency, so normalise each entry.
-    return _transactionList
-        .where((t) => t.type == TransactionType.expense)
-        .where((t) => !t.date.isBefore(periodStart))
-        .where((t) => budget.category == null || t.category == budget.category)
-        .fold(0.0, (s, t) => s + t.amountInBase + t.feeInBase);
+  }
+
+  /// Past periods for [budget], most recent first, each labelled with its
+  /// window and spend. Used by the budget card's history view.
+  List<BudgetHistoryPeriod> budgetHistory(Budget budget, {int periods = 6}) {
+    final now = DateTime.now();
+    final currentStart = _budgetPeriodStart(budget, now);
+    final history = <BudgetHistoryPeriod>[];
+
+    for (var i = 1; i <= periods; i++) {
+      DateTime start;
+      switch (budget.period) {
+        case BudgetPeriod.weekly:
+          start = currentStart.subtract(Duration(days: 7 * i));
+        case BudgetPeriod.monthly:
+          start = DateTime(now.year, now.month - i, 1);
+        case BudgetPeriod.yearly:
+          start = DateTime(now.year - i, 1, 1);
+      }
+      final end = _periodEnd(budget, start);
+      history.add(BudgetHistoryPeriod(
+        start: start,
+        end: end,
+        spent: spentInRange(budget, from: start, to: end),
+        limit: budget.amount,
+      ));
+    }
+    return history;
+  }
+
+  static DateTime _periodEnd(Budget budget, DateTime start) {
+    switch (budget.period) {
+      case BudgetPeriod.weekly:
+        return start.add(const Duration(days: 7));
+      case BudgetPeriod.monthly:
+        return DateTime(start.year, start.month + 1, 1);
+      case BudgetPeriod.yearly:
+        return DateTime(start.year + 1, 1, 1);
+    }
   }
 
   // ── WRITE: Budgets ────────────────────────────────────────────────────────
@@ -959,6 +1116,9 @@ class LedgerEntry {
   /// Transfer purpose, null for transactions.
   final TransferCategory? transferCategory;
 
+  /// Expense/income category, null for transfers.
+  final TransactionCategory? category;
+
   const LedgerEntry._({
     required this.id,
     required this.title,
@@ -975,6 +1135,7 @@ class LedgerEntry {
     this.note,
     this.reversalOfId,
     this.transferCategory,
+    this.category,
   })  : toAmount   = toAmount   ?? amount,
         toCurrency = toCurrency ?? currency;
 
@@ -993,6 +1154,7 @@ class LedgerEntry {
         currency:  t.currency,
         accountId: t.accountId,
         note:      t.note,
+        category:  t.category,
       );
 
   factory LedgerEntry.fromTransfer(Transfer t) => LedgerEntry._(
@@ -1052,6 +1214,122 @@ class BalancePoint {
   const BalancePoint({required this.date, required this.value});
 }
 
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+String _monthAbbr(int m) => _months[(m - 1) % 12];
+
+// ── Budget spend arithmetic ──────────────────────────────────────────────────
+
+/// Sum spent against [budget] between [from] (inclusive) and [to] (exclusive),
+/// in the base currency. Null bounds mean unbounded. Kept pure so the budget
+/// card and its history view share one tested rule.
+///
+/// Fees ride along with the entry they belong to — a purchase that cost an
+/// extra ETB 5 in charges counts against the budget at its full cost.
+double computeSpentAgainstBudget(
+  Iterable<Transaction> transactions,
+  Budget budget, {
+  DateTime? from,
+  DateTime? to,
+}) =>
+    transactions
+        .where((t) => t.type == TransactionType.expense)
+        .where((t) => (from == null || !t.date.isBefore(from)) &&
+            (to == null || t.date.isBefore(to)))
+        .where((t) => budget.category == null || t.category == budget.category)
+        .fold(0.0, (s, t) => s + t.amountInBase + t.feeInBase);
+
+// ── Trend bucketing arithmetic ───────────────────────────────────────────────
+
+/// Buckets [LedgerPeriod] into its native granularity (days for a week, weeks
+/// for a month, months for longer spans). Pure so the chart's bucketing is
+/// testable without a Firestore-backed service.
+List<TrendBucket> computeTrendFor(
+  LedgerPeriod period,
+  DateTime now,
+  double Function(DateTime start, DateTime end) incomeIn,
+  double Function(DateTime start, DateTime end) expensesIn,
+  double Function(DateTime start, DateTime end) feesIn,
+) {
+  final buckets = <TrendBucket>[];
+
+  void add(String label, DateTime start, DateTime end) {
+    buckets.add(TrendBucket(
+      label:    label,
+      start:    start,
+      income:   incomeIn(start, end),
+      expenses: expensesIn(start, end),
+      fees:     feesIn(start, end),
+    ));
+  }
+
+  switch (period) {
+    case LedgerPeriod.week:
+      final monday = now.subtract(Duration(days: now.weekday - 1));
+      final start  = DateTime(monday.year, monday.month, monday.day);
+      const names  = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+      for (var i = 0; i < 7; i++) {
+        final d = start.add(Duration(days: i));
+        add(names[i], d, d.add(const Duration(days: 1)));
+      }
+    case LedgerPeriod.month:
+      final start = DateTime(now.year, now.month, 1);
+      final next  = DateTime(now.year, now.month + 1, 1);
+      var weekStart = start;
+      var w = 1;
+      while (weekStart.isBefore(next)) {
+        var weekEnd = weekStart.add(const Duration(days: 7));
+        if (weekEnd.isAfter(next)) weekEnd = next;
+        add('W$w', weekStart, weekEnd);
+        weekStart = weekEnd;
+        w++;
+      }
+    case LedgerPeriod.sixMonths:
+    case LedgerPeriod.year:
+    case LedgerPeriod.all:
+      final count = period == LedgerPeriod.sixMonths ? 6 : 12;
+      for (var i = count - 1; i >= 0; i--) {
+        final target = DateTime(now.year, now.month - i, 1);
+        final start  = DateTime(target.year, target.month, 1);
+        final end    = DateTime(target.year, target.month + 1, 1);
+        add(_monthAbbr(start.month), start, end);
+      }
+  }
+  return buckets;
+}
+
+/// Monthly buckets across an arbitrary range, oldest first — the Insights
+/// custom-period mode. Pure like [computeTrendFor].
+List<TrendBucket> computeTrendBetween(
+  DateTime from,
+  DateTime to,
+  double Function(DateTime start, DateTime end) incomeIn,
+  double Function(DateTime start, DateTime end) expensesIn,
+  double Function(DateTime start, DateTime end) feesIn,
+) {
+  // Normalise to whole months, oldest first.
+  final start = DateTime(from.year, from.month, 1);
+  final endExclusive = DateTime(to.year, to.month + 1, 1);
+  final buckets = <TrendBucket>[];
+  var cursor = start;
+  while (cursor.isBefore(endExclusive)) {
+    final monthEnd = DateTime(cursor.year, cursor.month + 1, 1);
+    final bucketEnd = monthEnd.isAfter(endExclusive) ? endExclusive : monthEnd;
+    buckets.add(TrendBucket(
+      label: _monthAbbr(cursor.month),
+      start: cursor,
+      income:   incomeIn(cursor, bucketEnd),
+      expenses: expensesIn(cursor, bucketEnd),
+      fees:     feesIn(cursor, bucketEnd),
+    ));
+    cursor = monthEnd;
+  }
+  return buckets;
+}
+
 /// An account's share of total holdings, for the distribution chart.
 class AccountShare {
   final Account account;
@@ -1065,3 +1343,22 @@ class AccountShare {
     required this.inBase,
   });
 }
+
+/// One past period's performance against a budget, for the history sheet.
+class BudgetHistoryPeriod {
+  /// Inclusive window start.
+  final DateTime start;
+  /// Exclusive window end.
+  final DateTime end;
+  final double spent;
+  final double limit;
+  const BudgetHistoryPeriod({
+    required this.start,
+    required this.end,
+    required this.spent,
+    required this.limit,
+  });
+
+  bool get over => spent > limit;
+}
+

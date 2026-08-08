@@ -24,20 +24,7 @@ class Budget {
   }
 
   String get categoryLabel =>
-      category == null ? 'Overall Spending' : catLabel(category!);
-
-  static String catLabel(TransactionCategory c) {
-    switch (c) {
-      case TransactionCategory.food:          return 'Food';
-      case TransactionCategory.transport:     return 'Transport';
-      case TransactionCategory.utilities:     return 'Utilities';
-      case TransactionCategory.entertainment: return 'Entertainment';
-      case TransactionCategory.tithe:         return 'Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Freelance';
-      case TransactionCategory.other:         return 'Other';
-    }
-  }
+      category == null ? 'Overall Spending' : category!.label;
 
   Map<String, dynamic> toMap() => {
     'id':       id,

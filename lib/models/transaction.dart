@@ -27,6 +27,79 @@ double resolveRateToBase({
 enum TransactionCategory {
   food, transport, utilities, entertainment,
   tithe, salary, freelance, other,
+  health, education, rent, clothing,
+  business, taxes, insurance, subscriptions,
+}
+
+/// Display names and icons shared by every screen that renders a category.
+///
+/// The ledger filter, budget picker, insights drill-down and entry form all
+/// read from here so a category label never drifts between screens.
+extension TransactionCategoryDisplay on TransactionCategory {
+  /// Plain label — used in chips, filters, and pickers.
+  String get label {
+    switch (this) {
+      case TransactionCategory.food:          return 'Food';
+      case TransactionCategory.transport:     return 'Transport';
+      case TransactionCategory.utilities:     return 'Utilities';
+      case TransactionCategory.entertainment: return 'Entertainment';
+      case TransactionCategory.tithe:         return 'Tithe';
+      case TransactionCategory.salary:        return 'Salary';
+      case TransactionCategory.freelance:     return 'Freelance';
+      case TransactionCategory.other:         return 'Other';
+      case TransactionCategory.health:        return 'Health';
+      case TransactionCategory.education:     return 'Education';
+      case TransactionCategory.rent:          return 'Rent & Housing';
+      case TransactionCategory.clothing:      return 'Clothing & Shopping';
+      case TransactionCategory.business:      return 'Business';
+      case TransactionCategory.taxes:         return 'Taxes';
+      case TransactionCategory.insurance:     return 'Insurance';
+      case TransactionCategory.subscriptions: return 'Subscriptions';
+    }
+  }
+
+  /// Mystic-flavoured label — used in the entry form and transaction tiles.
+  String get mystiqueLabel {
+    switch (this) {
+      case TransactionCategory.food:          return 'Sustenance';
+      case TransactionCategory.transport:     return 'Carriage';
+      case TransactionCategory.utilities:     return 'The Hearth';
+      case TransactionCategory.entertainment: return 'Vices & Joy';
+      case TransactionCategory.tithe:         return 'Tithe';
+      case TransactionCategory.salary:        return 'Salary';
+      case TransactionCategory.freelance:     return 'Grimoire Sales';
+      case TransactionCategory.other:         return 'Miscellany';
+      case TransactionCategory.health:        return 'The Leech';
+      case TransactionCategory.education:     return 'The Scriptorium';
+      case TransactionCategory.rent:          return 'The Hearthstone';
+      case TransactionCategory.clothing:      return 'The Wardrobe';
+      case TransactionCategory.business:      return 'The Merchant Guild';
+      case TransactionCategory.taxes:         return 'The Crown\'s Due';
+      case TransactionCategory.insurance:     return 'The Shield';
+      case TransactionCategory.subscriptions: return 'The Standing Dues';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case TransactionCategory.food:          return Icons.restaurant_outlined;
+      case TransactionCategory.transport:     return Icons.directions_car_outlined;
+      case TransactionCategory.utilities:     return Icons.home_outlined;
+      case TransactionCategory.entertainment: return Icons.celebration_outlined;
+      case TransactionCategory.tithe:         return Icons.volunteer_activism_outlined;
+      case TransactionCategory.salary:        return Icons.work_outline;
+      case TransactionCategory.freelance:     return Icons.auto_stories_outlined;
+      case TransactionCategory.other:         return Icons.category_outlined;
+      case TransactionCategory.health:        return Icons.local_hospital_outlined;
+      case TransactionCategory.education:     return Icons.school_outlined;
+      case TransactionCategory.rent:          return Icons.home_work_outlined;
+      case TransactionCategory.clothing:      return Icons.checkroom_outlined;
+      case TransactionCategory.business:      return Icons.storefront_outlined;
+      case TransactionCategory.taxes:         return Icons.receipt_long_outlined;
+      case TransactionCategory.insurance:     return Icons.shield_outlined;
+      case TransactionCategory.subscriptions: return Icons.subscriptions_outlined;
+    }
+  }
 }
 
 class Transaction {
@@ -106,29 +179,7 @@ class Transaction {
 
   // ── Display helpers ──────────────────────────────────────────────────────
 
-  String get categoryLabel {
-    switch (category) {
-      case TransactionCategory.food:          return 'Sustenance';
-      case TransactionCategory.transport:     return 'Carriage';
-      case TransactionCategory.utilities:     return 'The Hearth';
-      case TransactionCategory.entertainment: return 'Vices & Joy';
-      case TransactionCategory.tithe:         return 'Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Grimoire Sales';
-      case TransactionCategory.other:         return 'Miscellany';
-    }
-  }
+  String get categoryLabel => category.mystiqueLabel;
 
-  IconData get categoryIcon {
-    switch (category) {
-      case TransactionCategory.food:          return Icons.restaurant_outlined;
-      case TransactionCategory.transport:     return Icons.directions_car_outlined;
-      case TransactionCategory.utilities:     return Icons.home_outlined;
-      case TransactionCategory.entertainment: return Icons.celebration_outlined;
-      case TransactionCategory.tithe:         return Icons.volunteer_activism_outlined;
-      case TransactionCategory.salary:        return Icons.work_outline;
-      case TransactionCategory.freelance:     return Icons.auto_stories_outlined;
-      case TransactionCategory.other:         return Icons.category_outlined;
-    }
-  }
+  IconData get categoryIcon => category.icon;
 }

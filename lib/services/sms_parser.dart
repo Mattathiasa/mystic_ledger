@@ -20,11 +20,15 @@ enum CapturedDirection { income, expense, unknown }
 /// Which service sent the alert.
 enum CapturedBank {
   telebirr,
-  cbe;
+  cbe,
+  /// A recurring-schedule proposal — not an SMS at all, but the review queue
+  /// presents it through the same banner and RECORD flow.
+  recurring;
 
   String get label => switch (this) {
         CapturedBank.telebirr => 'Telebirr',
         CapturedBank.cbe => 'CBE',
+        CapturedBank.recurring => 'Recurring',
       };
 }
 
@@ -179,6 +183,16 @@ String smsSignature({
 SmsParseResult parseSms(CapturedBank bank, String body) => switch (bank) {
       CapturedBank.telebirr => _parseTelebirr(body),
       CapturedBank.cbe => _parseCbe(body),
+      // Recurring proposals are built directly (see SmsCaptureStore); they are
+      // never parsed from text, but the switch must still be exhaustive.
+      CapturedBank.recurring => const SmsParseResult(
+          amount: null,
+          direction: CapturedDirection.unknown,
+          counterparty: null,
+          fee: null,
+          reference: null,
+          confidence: SmsConfidence.low,
+        ),
     };
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
