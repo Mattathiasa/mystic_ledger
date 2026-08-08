@@ -6,10 +6,16 @@ import '../services/finance_service.dart';
 import '../models/account_model.dart';
 import '../models/currency_model.dart';
 
-/// Screen to add a new bank account.
-/// Telebirr, Cash and Savings are fixed — users can only add bank accounts here.
+/// Screen to add an account of any kind — bank, mobile money, cash or savings.
+///
+/// Nothing is created for the user at sign-up, so this is the only way an
+/// account comes into existence. [initialType] lets a caller land the selector
+/// on the kind it is asking for (the Savings screen's empty state wants a
+/// vault, not a bank).
 class AddAccountScreen extends StatefulWidget {
-  const AddAccountScreen({super.key});
+  final AccountType initialType;
+
+  const AddAccountScreen({super.key, this.initialType = AccountType.bank});
 
   @override
   State<AddAccountScreen> createState() => _AddAccountScreenState();
@@ -18,7 +24,7 @@ class AddAccountScreen extends StatefulWidget {
 class _AddAccountScreenState extends State<AddAccountScreen> {
   final _formKey  = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  AccountType _type = AccountType.bank;
+  late AccountType _type = widget.initialType;
   // Defaults to the user's base currency; changeable here because after the
   // account has any entries the currency is locked (amounts are stored in it).
   String? _pickedCurrency;
@@ -327,62 +333,69 @@ class _TypeSelector extends StatelessWidget {
   const _TypeSelector({required this.selected, required this.onChanged});
 
   static const _options = [
-    (AccountType.bank,   'Bank',         Icons.account_balance_outlined),
-    (AccountType.mobile, 'Mobile',       Icons.account_balance_wallet_outlined),
-    (AccountType.cash,   'Cash',         Icons.payments_outlined),
+    (AccountType.bank,    'Bank',    Icons.account_balance_outlined),
+    (AccountType.mobile,  'Mobile',  Icons.account_balance_wallet_outlined),
+    (AccountType.cash,    'Cash',    Icons.payments_outlined),
+    (AccountType.savings, 'Savings', Icons.savings_outlined),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: _options.map((opt) {
-        final (type, label, icon) = opt;
-        final active = selected == type;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              right: opt == _options.last ? 0 : 8,
-            ),
-            child: GestureDetector(
-              onTap: () => onChanged(type),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: active
-                      ? MysticColors.primaryContainer.withOpacity(0.25)
-                      : MysticColors.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
+    // 2×2 rather than a single row: four tiles across a 360dp screen leaves
+    // ~58dp each, and "SAVINGS" overflows that below about 340dp.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tileWidth = (constraints.maxWidth - 8) / 2;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _options.map((opt) {
+            final (type, label, icon) = opt;
+            final active = selected == type;
+            return SizedBox(
+              width: tileWidth,
+              child: GestureDetector(
+                onTap: () => onChanged(type),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
                     color: active
-                        ? MysticColors.primaryContainer.withOpacity(0.6)
-                        : Colors.transparent,
-                    width: 1.5,
+                        ? MysticColors.primaryContainer.withOpacity(0.25)
+                        : MysticColors.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: active
+                          ? MysticColors.primaryContainer.withOpacity(0.6)
+                          : Colors.transparent,
+                      width: 1.5,
+                    ),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    Icon(icon,
-                        size: 22,
-                        color: active
-                            ? MysticColors.primary
-                            : MysticColors.onSurfaceVariant.withOpacity(0.4)),
-                    const SizedBox(height: 6),
-                    Text(
-                      label.toUpperCase(),
-                      style: labelStyle(9,
-                          letterSpacing: 1.0,
+                  child: Column(
+                    children: [
+                      Icon(icon,
+                          size: 22,
                           color: active
                               ? MysticColors.primary
-                              : MysticColors.onSurfaceVariant.withOpacity(0.5)),
-                    ),
-                  ],
+                              : MysticColors.onSurfaceVariant.withOpacity(0.4)),
+                      const SizedBox(height: 6),
+                      Text(
+                        label.toUpperCase(),
+                        style: labelStyle(9,
+                            letterSpacing: 1.0,
+                            color: active
+                                ? MysticColors.primary
+                                : MysticColors.onSurfaceVariant
+                                    .withOpacity(0.5)),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 }

@@ -16,6 +16,12 @@
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
+# The Flutter embedding references Play Core's deferred-component and
+# split-install APIs, but this app doesn't use deferred components and doesn't
+# depend on Play Core, so those classes are absent at compile time and R8 fails
+# on the dangling references. Nothing here is reachable at runtime — suppress.
+-dontwarn com.google.android.play.core.**
+
 # ── Firebase / Google Play Services ──────────────────────────────────────────
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }

@@ -4,6 +4,26 @@ import 'currency_model.dart';
 
 enum TransactionType { income, expense }
 
+/// Which rate an entry should carry after an edit.
+///
+/// [Transaction.rateToBase] is snapshotted at write time precisely so that
+/// updating the rate table later does not rewrite past months' reports. An edit
+/// must therefore *keep* the original snapshot — re-reading the live rate to
+/// fix a typo in a title would silently restate the figures for whatever month
+/// the entry falls in.
+///
+/// The one exception is a change of currency: the old snapshot describes a
+/// different currency and means nothing for the new one, so it has to be
+/// re-taken.
+double resolveRateToBase({
+  Transaction? existing,
+  required String currency,
+  required double liveRate,
+}) =>
+    (existing != null && existing.currency == currency)
+        ? existing.rateToBase
+        : liveRate;
+
 enum TransactionCategory {
   food, transport, utilities, entertainment,
   tithe, salary, freelance, other,

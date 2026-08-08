@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
 import '../models/transfer_model.dart';
@@ -225,6 +226,19 @@ class _TransferScreenState extends State<TransferScreen> {
                   ),
                   const SizedBox(height: 32),
 
+                  // A transfer needs somewhere to come from *and* go to. With
+                  // fewer than two accounts the pickers cannot be satisfied and
+                  // Save would only ever produce a validation snackbar.
+                  if (accounts.length < 2)
+                    NoAccountsCard(
+                      headline: accounts.isEmpty
+                          ? 'No vaults to move between'
+                          : 'Only one vault so far',
+                      body: 'A transfer moves gold from one account to another, '
+                          'so it needs at least two. You have '
+                          '${accounts.length}.',
+                    )
+                  else
                   // ── Form card ──────────────────────────────────────────
                   Container(
                     padding: const EdgeInsets.all(28),

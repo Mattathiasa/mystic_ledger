@@ -49,10 +49,21 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.14.3
 
+# The launcher icon is an Android adaptive icon: a charcoal background layer
+# with the gold sigil as a separate transparent foreground, so no launcher mask
+# can crop the emblem and no white plate appears behind it. `image_path` is the
+# flattened fallback used for iOS and pre-API-26 Android; it is deliberately
+# opaque RGB with no alpha channel, which the App Store requires.
+#
+# Both are generated from assets/icon/app_icon_original.png — see that file for
+# the source artwork. Regenerate with `dart run flutter_launcher_icons`.
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#292520"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  remove_alpha_ios: true
   min_sdk_android: 21
   web:
     generate: false

@@ -9,13 +9,17 @@ import 'app_theme.dart';
 /// save (permission denied, quota, rejected by rules) produced no visible
 /// signal and the user was left believing their money had been recorded.
 /// Everything that writes now reports through here.
-extension AppFeedback on BuildContext {
-  void showSuccess(String message) =>
-      _show(ScaffoldMessenger.maybeOf(this), message, MysticColors.secondary);
-
-  void showError(String message) =>
-      _show(ScaffoldMessenger.maybeOf(this), message, MysticColors.tertiary);
-}
+///
+/// The API takes a [ScaffoldMessengerState], not a `BuildContext`, on purpose:
+/// most writes report *after* the form has popped, by which point the calling
+/// screen's context is dead. Capture the messenger before navigating away.
+void showFeedback(
+  ScaffoldMessengerState? messenger,
+  String message, {
+  bool error = false,
+}) =>
+    _show(messenger, message,
+        error ? MysticColors.tertiary : MysticColors.secondary);
 
 void _show(ScaffoldMessengerState? messenger, String message, Color background) {
   if (messenger == null) return;
@@ -76,27 +80,4 @@ void reportIfWriteFails(
   write.catchError((Object e) {
     _show(messenger, friendlyWriteError(e), MysticColors.tertiary);
   });
-}
-
-/// For writes the user is explicitly waiting on (deletes, reversals, settings)
-/// where staying on the screen until it resolves is the expected behaviour.
-///
-/// Returns whether it succeeded. Unlike [reportIfWriteFails] this *does* await,
-/// so only use it where an offline stall would be acceptable or impossible.
-Future<bool> guardWrite(
-  BuildContext context,
-  Future<void> Function() write, {
-  String? successMessage,
-}) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  try {
-    await write();
-    if (successMessage != null) {
-      _show(messenger, successMessage, MysticColors.secondary);
-    }
-    return true;
-  } catch (e) {
-    _show(messenger, friendlyWriteError(e), MysticColors.tertiary);
-    return false;
-  }
 }

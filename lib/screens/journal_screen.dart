@@ -4,9 +4,28 @@ import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../widgets/transaction_tile.dart';
+import '../widgets/empty_state_card.dart';
+import '../widgets/account_edit_sheet.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
+import 'main_scaffold.dart';
 import 'new_entry_screen.dart';
+
+/// The entry form's slide-up transition.
+///
+/// Shared so that opening an entry to amend it feels like the same surface as
+/// writing one — the two used to differ because the FAB built its route inline.
+Route<void> entrySlideUpRoute(Widget page) => PageRouteBuilder(
+      pageBuilder: (_, __, ___) => page,
+      transitionsBuilder: (_, anim, __, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
+      transitionDuration: const Duration(milliseconds: 400),
+    );
 
 /// Tab 1 — Dashboard.
 /// Shows total balance, per-account cards, and the 5 most recent transactions.
@@ -44,20 +63,8 @@ class JournalScreen extends StatelessWidget {
                 bottom: 24,
                 right: 24,
                 child: _AddFab(
-                  onTap: () => Navigator.of(context).push(
-                    PageRouteBuilder(
-                      pageBuilder: (_, __, ___) => const NewEntryScreen(),
-                      transitionsBuilder: (_, anim, __, child) => SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 1),
-                          end: Offset.zero,
-                        ).animate(CurvedAnimation(
-                            parent: anim, curve: Curves.easeOutCubic)),
-                        child: child,
-                      ),
-                      transitionDuration: const Duration(milliseconds: 400),
-                    ),
-                  ),
+                  onTap: () => Navigator.of(context)
+                      .push(entrySlideUpRoute(const NewEntryScreen())),
                 ),
               ),
             ],
@@ -164,7 +171,7 @@ class _BalanceHero extends StatelessWidget {
             ),
           ),
           child: Text(
-            '"The ledger reflects a prosperous season. Gold flows through the Telebirr artery."',
+            '"The ledger reflects what the season has given, and what it has taken."',
             style: bodyStyle(13, color: MysticColors.onSurfaceVariant)
                 .copyWith(fontStyle: FontStyle.italic),
           ),
@@ -223,10 +230,20 @@ class _AccountSection extends StatelessWidget {
         iconColor: ic,
         bgColor: bg,
         rotation: rot,
+        onTap: () => showAccountEditSheet(context, svc, acc),
       );
     }).toList();
 
-    if (cards.isEmpty) return const SizedBox.shrink();
+    // The ledger starts genuinely empty — nothing is created at sign-up — so
+    // this is the app's front door, not a rare edge case. A blank gap here
+    // leaves a new user with nowhere to go.
+    if (cards.isEmpty) {
+      return const NoAccountsCard(
+        headline: 'No vaults yet',
+        body: 'Add the accounts you actually keep money in — a bank, mobile '
+            'money, cash in hand — and the ledger fills itself from there.',
+      );
+    }
 
     // Layout: pairs in rows, last card full-width if odd count
     final rows = <Widget>[];
@@ -259,6 +276,10 @@ class _AccountCard extends StatelessWidget {
   final Color bgColor;
   final double rotation;
 
+  /// Opens the account editor. The eye icon keeps its own handler, so tapping
+  /// it hides the balance rather than opening the sheet.
+  final VoidCallback onTap;
+
   const _AccountCard({
     required this.label,
     required this.badge,
@@ -270,13 +291,17 @@ class _AccountCard extends StatelessWidget {
     required this.iconColor,
     required this.bgColor,
     required this.rotation,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Transform.rotate(
       angle: rotation,
-      child: Container(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: bgColor,
@@ -320,11 +345,14 @@ class _AccountCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     // Each account hides independently of the rest.
+                    // Padded out to a usable target: at all(2) this was ~19dp,
+                    // and it now sits inside a card that is itself tappable, so
+                    // a near-miss would change screens instead of toggling.
                     GestureDetector(
                       onTap: onToggleHide,
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
-                        padding: const EdgeInsets.all(2),
+                        padding: const EdgeInsets.all(8),
                         child: Icon(
                           hidden
                               ? Icons.visibility_off_outlined
@@ -350,6 +378,7 @@ class _AccountCard extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -374,7 +403,8 @@ class _RecentSection extends StatelessWidget {
                 style:
                     headlineStyle(28, italic: true, weight: FontWeight.w700)),
             TextButton(
-              onPressed: () {},
+              onPressed: () =>
+                  MainShell.maybeOf(context)?.goToTab(MainScaffold.tabLedger),
               child: Text(
                 'VIEW ARCHIVES',
                 style:
@@ -407,9 +437,13 @@ class _RecentSection extends StatelessWidget {
         else
           ...recent.map((t) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: TransactionTile(
-                  transaction: t,
-                  accountName: svc.findAccount(t.accountId)?.name,
+                child: Builder(
+                  builder: (context) => TransactionTile(
+                    transaction: t,
+                    accountName: svc.findAccount(t.accountId)?.name,
+                    onTap: () => Navigator.of(context)
+                        .push(entrySlideUpRoute(NewEntryScreen(existing: t))),
+                  ),
                 ),
               )),
       ],

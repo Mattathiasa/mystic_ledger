@@ -12,10 +12,14 @@ class TransactionTile extends StatelessWidget {
   final Transaction transaction;
   final String? accountName; // display name for the account
 
+  /// Opens the entry for amendment. Leave null to render the tile inert.
+  final VoidCallback? onTap;
+
   const TransactionTile({
     super.key,
     required this.transaction,
     this.accountName,
+    this.onTap,
   });
 
   @override
@@ -39,7 +43,11 @@ class TransactionTile extends StatelessWidget {
     final acctDisplay =
         (accountName ?? transaction.accountId).toUpperCase();
 
-    return Container(
+    return GestureDetector(
+      // Opaque so the whole card is a target, not just the painted glyphs.
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: MysticColors.surfaceContainerHighest,
@@ -110,6 +118,7 @@ class TransactionTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }

@@ -8,10 +8,44 @@ import 'giving_screen.dart';
 import 'insights_screen.dart';
 import 'finance_hub_screen.dart';
 
+/// Gives the tabs a handle on the shell that contains them.
+///
+/// The tabs each build their own `Scaffold`, so neither `Scaffold.of` nor a
+/// direct reference reaches the shell's drawer or its tab index. An
+/// `InheritedWidget` does, and — unlike threading callbacks through the
+/// constructors — it leaves [MainScaffold._screens] `const`, since a const
+/// widget still resolves inherited ancestors from its `BuildContext` at build
+/// time.
+class MainShell extends InheritedWidget {
+  final void Function(int index) goToTab;
+  final VoidCallback openDrawer;
+
+  const MainShell({
+    super.key,
+    required this.goToTab,
+    required this.openDrawer,
+    required super.child,
+  });
+
+  static MainShell? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MainShell>();
+
+  // Both callbacks are stable for the shell's lifetime, so dependents never
+  // need rebuilding on account of this widget.
+  @override
+  bool updateShouldNotify(MainShell oldWidget) => false;
+}
+
 /// Root shell that holds the 5 main tabs.
 /// Uses IndexedStack so each screen preserves its scroll position.
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
+
+  static const int tabJournal  = 0;
+  static const int tabLedger   = 1;
+  static const int tabGiving   = 2;
+  static const int tabInsights = 3;
+  static const int tabFinance  = 4;
 
   @override
   State<MainScaffold> createState() => _MainScaffoldState();
@@ -19,6 +53,8 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 0;
+
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const _screens = [
     JournalScreen(),
@@ -28,15 +64,31 @@ class _MainScaffoldState extends State<MainScaffold> {
     FinanceHubScreen(),
   ];
 
+  // Methods rather than closures built in build(): a tear-off of an instance
+  // method is stable across rebuilds, so the callbacks handed to MainShell keep
+  // their identity. That matters because _screens is const — IndexedStack's
+  // children are the same instances every frame and Flutter skips rebuilding
+  // them.
+  void _goToTab(int i) => setState(() => _currentIndex = i);
+
+  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: MysticColors.background,
-      drawer: const AppDrawer(),
-      body: IndexedStack(index: _currentIndex, children: _screens),
-      bottomNavigationBar: _MysticBottomNav(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+    return MainShell(
+      goToTab: _goToTab,
+      openDrawer: _openDrawer,
+      // Wraps the Scaffold, not just the body: MysticAppBar sits inside each
+      // tab's own Scaffold and still has to find this.
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: MysticColors.background,
+        drawer: const AppDrawer(),
+        body: IndexedStack(index: _currentIndex, children: _screens),
+        bottomNavigationBar: _MysticBottomNav(
+          currentIndex: _currentIndex,
+          onTap: _goToTab,
+        ),
       ),
     );
   }

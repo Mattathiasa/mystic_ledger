@@ -65,6 +65,7 @@ class BudgetScreen extends StatelessWidget {
                           onDelete: () => reportIfWriteFails(
                               ScaffoldMessenger.maybeOf(context),
                               svc.deleteBudget(b.id)),
+                          onEdit: () => _showSheet(context, existing: b),
                         ),
                       )),
                 ],
@@ -74,7 +75,7 @@ class BudgetScreen extends StatelessWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddSheet(context),
+        onPressed: () => _showSheet(context),
         backgroundColor: MysticColors.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
@@ -84,12 +85,13 @@ class BudgetScreen extends StatelessWidget {
     );
   }
 
-  void _showAddSheet(BuildContext context) {
+  /// Blank for a new budget, prefilled when [existing] is given.
+  void _showSheet(BuildContext context, {Budget? existing}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _AddBudgetSheet(),
+      builder: (_) => _AddBudgetSheet(existing: existing),
     );
   }
 }
@@ -141,12 +143,16 @@ class _BudgetCard extends StatelessWidget {
   final String currency;
   final VoidCallback onDelete;
 
+  /// Opens the budget for amendment. The delete icon keeps its own handler.
+  final VoidCallback onEdit;
+
   const _BudgetCard({
     required this.budget,
     required this.spent,
     required this.fmt,
     required this.currency,
     required this.onDelete,
+    required this.onEdit,
   });
 
   @override
@@ -157,7 +163,10 @@ class _BudgetCard extends StatelessWidget {
         overBudget ? MysticColors.tertiary : MysticColors.secondary;
     final remaining = budget.amount - spent;
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onEdit,
+      child: Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: MysticColors.surfaceContainerLow,
@@ -310,6 +319,7 @@ class _BudgetCard extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -330,8 +340,14 @@ class _BudgetCard extends StatelessWidget {
 
 // ── Add budget bottom sheet ───────────────────────────────────────────────────
 
+/// Creates a budget, or amends one when [existing] is given.
+///
+/// `setBudget` is an upsert keyed by document id, so re-saving with the same id
+/// rewrites the record in place.
 class _AddBudgetSheet extends StatefulWidget {
-  const _AddBudgetSheet();
+  final Budget? existing;
+
+  const _AddBudgetSheet({this.existing});
 
   @override
   State<_AddBudgetSheet> createState() => _AddBudgetSheetState();
@@ -342,6 +358,18 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
   TransactionCategory? _category; // null = overall
   final _amountCtrl = TextEditingController();
   bool _saving = false;
+
+  bool get _isEdit => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    if (e == null) return;
+    _period   = e.period;
+    _category = e.category;
+    _amountCtrl.text = e.amount.toStringAsFixed(2);
+  }
 
   @override
   void dispose() {
@@ -369,7 +397,13 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
     setState(() => _saving = true);
     final svc = context.read<FinanceService>();
     final budget = Budget(
-      id:       '${_period.name}_${_category?.name ?? 'overall'}_${DateTime.now().millisecondsSinceEpoch}',
+      // Keep the id on an edit. The generated one encodes period and category,
+      // so regenerating it after either changed would write a *second*
+      // document and leave the user looking at two budget cards. The encoding
+      // is only a naming convenience — `Budget.fromMap` reads the fields — so
+      // a stale one is harmless.
+      id: widget.existing?.id ??
+          '${_period.name}_${_category?.name ?? 'overall'}_${DateTime.now().millisecondsSinceEpoch}',
       period:   _period,
       amount:   amount,
       category: _category,
@@ -409,7 +443,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
               ),
             ),
 
-            Text('New Budget Scroll',
+            Text(_isEdit ? 'Amend Budget Scroll' : 'New Budget Scroll',
                 style: headlineStyle(24, italic: true, weight: FontWeight.w700)),
             const SizedBox(height: 28),
 
@@ -557,7 +591,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
                             child: CircularProgressIndicator(
                                 color: Colors.white, strokeWidth: 2),
                           )
-                        : Text('Inscribe Budget',
+                        : Text(_isEdit ? 'Update Budget' : 'Inscribe Budget',
                             style: headlineStyle(18,
                                 italic: true,
                                 weight: FontWeight.w900,

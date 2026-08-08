@@ -523,13 +523,17 @@ class _StatsRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _StatCard(
-            label: 'SAVINGS',
-            // Savings sits in its own account, so it carries that currency.
-            value: '${svc.currencyOf(FinanceService.idSavings)} '
-                '${fmt.format(svc.totalSavings)}',
-            color: MysticColors.primary,
-          ),
+          child: Builder(builder: (_) {
+            // Vaults hold their own currencies; across several the total has to
+            // be converted, and the ≈ says the figure is an estimate.
+            final s = svc.savingsSummary;
+            return _StatCard(
+              label: 'SAVINGS',
+              value: '${s.converted ? '≈ ' : ''}${s.currency} '
+                  '${fmt.format(s.amount)}',
+              color: MysticColors.primary,
+            );
+          }),
         ),
       ],
     );

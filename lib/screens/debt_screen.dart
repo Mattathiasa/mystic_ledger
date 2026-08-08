@@ -101,18 +101,29 @@ class _DebtScreenState extends State<DebtScreen>
     );
   }
 
-  void _showAddSheet(BuildContext context, FinanceService svc) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _AddDebtSheet(
-        svc: svc,
-        initialType:
-            _tabs.index == 0 ? DebtType.owe : DebtType.owed,
-      ),
-    );
-  }
+  void _showAddSheet(BuildContext context, FinanceService svc) =>
+      showDebtSheet(context, svc,
+          initialType: _tabs.index == 0 ? DebtType.owe : DebtType.owed);
+}
+
+/// Opens the debt form — blank for a new record, prefilled when [existing] is
+/// given. Shared so the FAB and tap-to-edit present identically.
+void showDebtSheet(
+  BuildContext context,
+  FinanceService svc, {
+  DebtType initialType = DebtType.owe,
+  Debt? existing,
+}) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _AddDebtSheet(
+      svc: svc,
+      initialType: initialType,
+      existing: existing,
+    ),
+  );
 }
 
 // ── Debt list ─────────────────────────────────────────────────────────────────
@@ -159,7 +170,12 @@ class _DebtList extends StatelessWidget {
           const SizedBox(height: 12),
           ...unpaid.map((d) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: _DebtCard(debt: d, fmt: fmt, svc: svc),
+                child: _DebtCard(
+                  debt: d,
+                  fmt: fmt,
+                  svc: svc,
+                  onEdit: () => showDebtSheet(context, svc, existing: d),
+                ),
               )),
         ],
         if (paid.isNotEmpty) ...[
@@ -171,7 +187,13 @@ class _DebtList extends StatelessWidget {
           const SizedBox(height: 12),
           ...paid.map((d) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: _DebtCard(debt: d, fmt: fmt, svc: svc, muted: true),
+                child: _DebtCard(
+                  debt: d,
+                  fmt: fmt,
+                  svc: svc,
+                  muted: true,
+                  onEdit: () => showDebtSheet(context, svc, existing: d),
+                ),
               )),
         ],
         if (unpaid.isEmpty && allDebts.isNotEmpty)
@@ -269,10 +291,15 @@ class _DebtCard extends StatelessWidget {
   final FinanceService svc;
   final bool muted;
 
+  /// Opens the debt for amendment. The SETTLE toggle and the SETTLED chip keep
+  /// their own handlers, so those still toggle rather than open the sheet.
+  final VoidCallback onEdit;
+
   const _DebtCard({
     required this.debt,
     required this.fmt,
     required this.svc,
+    required this.onEdit,
     this.muted = false,
   });
 
@@ -282,7 +309,10 @@ class _DebtCard extends StatelessWidget {
     final color   = isOwe ? MysticColors.tertiary : MysticColors.secondary;
     final dateFmt = DateFormat('MMM d, yyyy · h:mm a');
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onEdit,
+      child: Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: muted
@@ -374,6 +404,7 @@ class _DebtCard extends StatelessWidget {
               const SizedBox(height: 6),
               if (!muted)
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => reportIfWriteFails(
                       ScaffoldMessenger.maybeOf(context),
                       svc.toggleDebtPaid(debt.id)),
@@ -394,23 +425,32 @@ class _DebtCard extends StatelessWidget {
                   ),
                 )
               else
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: MysticColors.secondary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'SETTLED',
-                    style: labelStyle(9,
-                        letterSpacing: 1.0,
-                        color: MysticColors.secondary),
+                // Settling was one-way: this chip used to be inert, so a debt
+                // marked settled by mistake could never be reopened.
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => reportIfWriteFails(
+                      ScaffoldMessenger.maybeOf(context),
+                      svc.toggleDebtPaid(debt.id)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: MysticColors.secondary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'SETTLED',
+                      style: labelStyle(9,
+                          letterSpacing: 1.0,
+                          color: MysticColors.secondary),
+                    ),
                   ),
                 ),
             ],
           ),
         ],
+      ),
       ),
     );
   }
@@ -492,11 +532,20 @@ class _AddDebtFab extends StatelessWidget {
 
 // ── Add debt bottom sheet ─────────────────────────────────────────────────────
 
+/// Records a debt, or amends one when [existing] is given.
+///
+/// `addDebt` is an upsert keyed by document id, so re-saving with the same id
+/// rewrites the record in place.
 class _AddDebtSheet extends StatefulWidget {
   final FinanceService svc;
   final DebtType initialType;
+  final Debt? existing;
 
-  const _AddDebtSheet({required this.svc, required this.initialType});
+  const _AddDebtSheet({
+    required this.svc,
+    required this.initialType,
+    this.existing,
+  });
 
   @override
   State<_AddDebtSheet> createState() => _AddDebtSheetState();
@@ -510,10 +559,17 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
 
   late DebtType _type;
 
+  bool get _isEdit => widget.existing != null;
+
   @override
   void initState() {
     super.initState();
-    _type = widget.initialType;
+    final e = widget.existing;
+    _type = e?.type ?? widget.initialType;
+    if (e == null) return;
+    _nameCtrl.text = e.name;
+    _amtCtrl.text  = e.amount.toStringAsFixed(2);
+    _noteCtrl.text = e.note ?? '';
   }
 
   @override
@@ -529,15 +585,21 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
     final amount = double.tryParse(_amtCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
 
+    final existing = widget.existing;
     reportIfWriteFails(
       ScaffoldMessenger.maybeOf(context),
       widget.svc.addDebt(
         Debt(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          // Same id ⇒ the upsert rewrites this debt instead of adding one.
+          id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
           name: _nameCtrl.text.trim(),
           amount: amount,
           type: _type,
-          date: DateTime.now(),
+          // The form collects neither of these, and `Debt` defaults isPaid to
+          // false — so amending a settled debt would quietly un-settle it and
+          // put it back in the outstanding totals.
+          date: existing?.date ?? DateTime.now(),
+          isPaid: existing?.isPaid ?? false,
           note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
         ),
       ),
@@ -576,7 +638,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Record Debt',
+              Text(_isEdit ? 'Amend Debt' : 'Record Debt',
                   style: headlineStyle(24, italic: true, weight: FontWeight.w900)),
               const SizedBox(height: 20),
 
@@ -735,7 +797,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                   ),
                   child: Center(
                     child: Text(
-                      'Record in Ledger',
+                      _isEdit ? 'Update Record' : 'Record in Ledger',
                       style: headlineStyle(18,
                           italic: true,
                           weight: FontWeight.w900,
@@ -744,11 +806,67 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                   ),
                 ),
               ),
+
+              // Deletion lives here rather than on the card: the card's row is
+              // already avatar | name | amount + SETTLE, and putting a
+              // destructive control beside a state toggle on a money record
+              // invites mis-taps. Mirrors the account editor.
+              if (_isEdit) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _confirmRemove,
+                  child: Text('Remove this debt',
+                      style: bodyStyle(13, color: MysticColors.tertiary)),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmRemove() async {
+    final debt = widget.existing!;
+    final svc  = widget.svc;
+    final fmt  = NumberFormat('#,##0.00');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: MysticColors.surfaceContainerLow,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Delete debt?',
+            style: headlineStyle(20, italic: true, weight: FontWeight.w700)),
+        content: Text(
+          'Remove the record of ${debt.name} for '
+          '${svc.baseCurrency} ${fmt.format(debt.amount)}? '
+          'This cannot be undone.',
+          style: bodyStyle(14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: bodyStyle(14,
+                    weight: FontWeight.w700, color: MysticColors.tertiary)),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true || !mounted) return;
+    // Captured before the pop — this sheet's context is gone by the time a
+    // server rejection comes back.
+    reportIfWriteFails(
+        ScaffoldMessenger.maybeOf(context), svc.deleteDebt(debt.id));
+    if (mounted) Navigator.of(context).pop();
   }
 }
 

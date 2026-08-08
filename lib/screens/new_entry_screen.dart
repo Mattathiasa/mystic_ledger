@@ -4,13 +4,20 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
 import '../models/transaction.dart';
 import '../models/account_model.dart';
 
 /// Modal screen — slides up from the bottom when tapping ADD ENTRY.
+///
+/// Doubles as the edit form: pass [existing] and the same document is rewritten
+/// rather than a new one created (`addTransaction` is an upsert keyed by id).
 class NewEntryScreen extends StatefulWidget {
-  const NewEntryScreen({super.key});
+  /// The entry being amended, or null when writing a new one.
+  final Transaction? existing;
+
+  const NewEntryScreen({super.key, this.existing});
 
   @override
   State<NewEntryScreen> createState() => _NewEntryScreenState();
@@ -26,6 +33,39 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   TransactionType    _type     = TransactionType.expense;
   TransactionCategory _category = TransactionCategory.other;
   String? _accountId; // set to first spendable account on first build
+
+  bool get _isEdit => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    if (e == null) return;
+
+    _amountCtrl.text = e.amount.toStringAsFixed(2);
+    if (e.fee > 0) _feeCtrl.text = e.fee.toStringAsFixed(2);
+    _titleCtrl.text = e.title;
+    _noteCtrl.text  = e.note ?? '';
+    _type      = e.type;
+    _category  = e.category;
+    _accountId = e.accountId;
+  }
+
+  /// The accounts offered in the picker.
+  ///
+  /// An entry can outlive its account: `spendableAccounts` filters on
+  /// `isActive`, so once an account is removed the picker would drop the value
+  /// it is meant to be showing and render blank. Re-add it, marked, so the
+  /// entry keeps reading correctly and the user can move it somewhere live.
+  List<Account> _pickerAccounts(FinanceService svc) {
+    final list = [...svc.spendableAccounts];
+    final id = widget.existing?.accountId;
+    if (id != null && !list.any((a) => a.id == id)) {
+      final removed = svc.findAccount(id);
+      if (removed != null) list.add(removed);
+    }
+    return list;
+  }
 
   @override
   void dispose() {
@@ -50,6 +90,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     setState(() => _saving = true);
 
     final svc = context.read<FinanceService>();
+    final existing = widget.existing;
     // Amounts are recorded in the holding account's currency, with the rate
     // snapshotted so reports stay stable when rates are updated later.
     final currency = svc.currencyOf(_accountId!);
@@ -64,16 +105,24 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
       messenger,
       svc.addTransaction(
         Transaction(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          // Same id ⇒ the upsert rewrites this entry instead of adding one.
+          id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
           title: _titleCtrl.text.trim(),
           amount: amount,
           type: _type,
           category: _category,
           accountId: _accountId!,
-          date: DateTime.now(),
+          // Keep the original date. Stamping `now` on an edit would move the
+          // entry into the current period, changing the tithe owed and the
+          // budget spend for *both* the old month and this one.
+          date: existing?.date ?? DateTime.now(),
           note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
           currency: currency,
-          rateToBase: svc.settings.rateFor(currency),
+          rateToBase: resolveRateToBase(
+            existing: existing,
+            currency: currency,
+            liveRate: svc.settings.rateFor(currency),
+          ),
           fee: fee,
         ),
       ),
@@ -84,7 +133,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final svc     = context.watch<FinanceService>();
-    final accounts = svc.spendableAccounts;
+    final accounts = _pickerAccounts(svc);
 
     // Initialise default account on first build
     if (_accountId == null && accounts.isNotEmpty) {
@@ -120,7 +169,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'NEW RECORD',
+                              _isEdit ? 'AMEND RECORD' : 'NEW RECORD',
                               style: labelStyle(10,
                                   letterSpacing: 2.0,
                                   color: MysticColors.onSurfaceVariant
@@ -131,7 +180,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                               angle: -0.017,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Write Entry',
+                                _isEdit ? 'Revise Entry' : 'Write Entry',
                                 style: headlineStyle(32,
                                     italic: true, weight: FontWeight.w900),
                               ),
@@ -162,6 +211,16 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   ),
                   const SizedBox(height: 28),
 
+                  // Without an account there is nothing to record the entry
+                  // against, and Save would validate and then silently do
+                  // nothing. Show the way out instead of half a dead form.
+                  if (accounts.isEmpty)
+                    const NoAccountsCard(
+                      headline: 'Nowhere to file this',
+                      body: 'An entry has to be recorded against an account. '
+                          'Add the one this money moved through and come back.',
+                    )
+                  else
                   // ── Form card ────────────────────────────────────────────
                   Container(
                     padding: const EdgeInsets.all(28),
@@ -220,12 +279,42 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                           selectedId: _accountId ?? '',
                           onChanged: (id) => setState(() => _accountId = id),
                         ),
+                        // Moving an entry to an account in another currency
+                        // reinterprets the number rather than converting it —
+                        // 500 ETB does not become 500 USD. Say so; never
+                        // silently convert someone's money.
+                        if (_isEdit &&
+                            entryCurrency != widget.existing!.currency) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.info_outline,
+                                  size: 15, color: MysticColors.tertiary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'This vault holds $entryCurrency. The amount '
+                                  'will be recorded as $entryCurrency, not '
+                                  'converted from '
+                                  '${widget.existing!.currency}.',
+                                  style: bodyStyle(12,
+                                      color: MysticColors.tertiary),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         _divider(),
                         const SizedBox(height: 24),
                         _NoteField(controller: _noteCtrl),
                         const SizedBox(height: 32),
-                        _SaveButton(onTap: _save, busy: _saving),
+                        _SaveButton(
+                          onTap: _save,
+                          busy: _saving,
+                          label: _isEdit ? 'Save Changes' : 'Save Entry',
+                        ),
                       ],
                     ),
                   ),
@@ -235,7 +324,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text(
-                        'DISCARD ENTRY',
+                        _isEdit ? 'DISCARD CHANGES' : 'DISCARD ENTRY',
                         style: labelStyle(11,
                             letterSpacing: 1.5,
                             color: MysticColors.onSurfaceVariant.withOpacity(0.5)),
@@ -655,7 +744,13 @@ class _AccountPicker extends StatelessWidget {
           style: bodyStyle(15, weight: FontWeight.w600),
           dropdownColor: MysticColors.surfaceContainerLow,
           items: accounts
-              .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+              .map((a) => DropdownMenuItem(
+                    value: a.id,
+                    // A removed account only appears here because an entry
+                    // being edited still points at it; label it so the user
+                    // knows why a deleted vault is in the list.
+                    child: Text(a.isActive ? a.name : '${a.name} (removed)'),
+                  ))
               .toList(),
         ),
       ],
@@ -712,7 +807,12 @@ class _NoteField extends StatelessWidget {
 class _SaveButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool busy;
-  const _SaveButton({required this.onTap, this.busy = false});
+  final String label;
+  const _SaveButton({
+    required this.onTap,
+    this.busy = false,
+    this.label = 'Save Entry',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -745,7 +845,7 @@ class _SaveButton extends StatelessWidget {
                       color: Colors.white, strokeWidth: 2),
                 )
               : Text(
-                  'Save Entry',
+                  label,
                   style: headlineStyle(20,
                       italic: true,
                       weight: FontWeight.w900,

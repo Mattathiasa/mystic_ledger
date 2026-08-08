@@ -45,11 +45,9 @@ extension LedgerPeriodDisplay on LedgerPeriod {
 /// Subscribes to Firestore real-time streams for the authenticated user.
 /// Exposes the same API as before — all existing screens work unchanged.
 class FinanceService extends ChangeNotifier {
-  // ── Well-known account IDs ────────────────────────────────────────────────
-  static const String idTelebirr = 'telebirr';
-  static const String idCash     = 'cash';
-  static const String idCBE      = 'cbe';
-  static const String idSavings  = 'savings';
+  // There are deliberately no well-known account IDs. Nothing is created for
+  // the user at sign-up, so no particular account is guaranteed to exist;
+  // savings is identified by [AccountType.savings], not by a fixed id.
 
   // ── Firestore references ──────────────────────────────────────────────────
   final String userId;
@@ -239,6 +237,44 @@ class FinanceService extends ChangeNotifier {
   List<Account> get spendableAccounts =>
       _accountList.where((a) => a.isActive && a.type != AccountType.savings).toList();
 
+  // ── READ: Savings ─────────────────────────────────────────────────────────
+  //
+  // Savings is a *kind* of account, not one particular account. There may be
+  // none, one, or several, and each holds its own currency.
+
+  List<Account> get savingsAccounts => _accountList
+      .where((a) => a.isActive && a.type == AccountType.savings)
+      .toList();
+
+  bool get hasSavingsAccount => savingsAccounts.isNotEmpty;
+
+  bool isSavingsAccount(String id) =>
+      findAccount(id)?.type == AccountType.savings;
+
+  /// Every transfer touching any vault, in one pass so a vault-to-vault
+  /// movement is listed once rather than twice.
+  List<Transfer> get savingsTransfers {
+    final ids = savingsAccounts.map((a) => a.id).toSet();
+    if (ids.isEmpty) return const [];
+    return _transferList
+        .where((t) =>
+            ids.contains(t.fromAccountId) || ids.contains(t.toAccountId))
+        .toList();
+  }
+
+  /// True only when every vault is masked — with no vaults there is nothing
+  /// being hidden, so this is false rather than vacuously true.
+  bool get savingsHidden =>
+      savingsAccounts.isNotEmpty &&
+      savingsAccounts.every((a) => isAccountHidden(a.id));
+
+  SavingsSummary get savingsSummary => computeSavingsSummary(
+        savingsAccounts,
+        accountBalance,
+        _settings.rateFor,
+        baseCurrency,
+      );
+
   Account? findAccount(String id) {
     try { return _accountList.firstWhere((a) => a.id == id); }
     catch (_) { return null; }
@@ -254,6 +290,15 @@ class FinanceService extends ChangeNotifier {
   List<Transaction> filteredBy(TransactionType? type) {
     if (type == null) return _transactionList;
     return _transactionList.where((t) => t.type == type).toList();
+  }
+
+  /// The full record behind a ledger row.
+  ///
+  /// [LedgerEntry] is lossy — it drops `category` and `rateToBase` — so editing
+  /// an entry has to start from the original transaction, not the row.
+  Transaction? findTransaction(String id) {
+    try { return _transactionList.firstWhere((t) => t.id == id); }
+    catch (_) { return null; }
   }
 
   // ── READ: Unified ledger (transactions + transfers, newest first) ─────────
@@ -337,8 +382,7 @@ class FinanceService extends ChangeNotifier {
   double get monthlyIncome =>
       incomeInRange(from: LedgerPeriod.month.startFrom(DateTime.now()));
 
-  double get balance      => totalIncome - totalExpenses;
-  double get totalSavings => accountBalance(idSavings);
+  double get balance => totalIncome - totalExpenses;
 
   bool _inRange(DateTime d, DateTime? from, DateTime? to) =>
       (from == null || !d.isBefore(from)) && (to == null || d.isBefore(to));
@@ -534,6 +578,7 @@ class FinanceService extends ChangeNotifier {
 
   // ── WRITE: Transactions ───────────────────────────────────────────────────
 
+  /// Upsert — re-saving with an existing id edits that entry in place.
   Future<void> addTransaction(Transaction t) =>
       _transactions.doc(t.id).set(t.toMap());
 
@@ -542,7 +587,10 @@ class FinanceService extends ChangeNotifier {
   Future<void> addTransfer(Transfer t) =>
       _transfers.doc(t.id).set(t.toMap());
 
-  Future<void> deleteTransfer(String id) => _transfers.doc(id).delete();
+  // There is deliberately no `deleteTransfer`. A transfer is corrected by
+  // [reverseTransfer], which records the opposing movement and keeps both
+  // halves in the archive. Deleting one would lose that history and, worse,
+  // orphan any reversal already pointing at it via `reversalOfId`.
 
   /// True when some other transfer exists that reverses [id].
   bool isReversed(String id) =>
@@ -623,12 +671,15 @@ class FinanceService extends ChangeNotifier {
 
   // ── WRITE: Debts ──────────────────────────────────────────────────────────
 
+  /// Upsert — re-saving with an existing id edits that debt in place.
   Future<void> addDebt(Debt d) => _debts.doc(d.id).set(d.toMap());
 
   Future<void> toggleDebtPaid(String debtId) async {
     final debt = _debtList.firstWhere((d) => d.id == debtId);
     await _debts.doc(debtId).update({'isPaid': !debt.isPaid});
   }
+
+  Future<void> deleteDebt(String id) => _debts.doc(id).delete();
 
   // ── WRITE: Accounts ───────────────────────────────────────────────────────
 
@@ -693,6 +744,7 @@ class FinanceService extends ChangeNotifier {
 
   // ── WRITE: Budgets ────────────────────────────────────────────────────────
 
+  /// Upsert — re-saving with an existing id edits that budget in place.
   Future<void> setBudget(Budget b) => _budgets.doc(b.id).set(b.toMap());
 
   Future<void> deleteBudget(String id) => _budgets.doc(id).delete();
@@ -805,6 +857,76 @@ double computeAccountBalance(
       .fold<double>(0.0, (s, t) => s + t.amount + t.fee);
 
   return fromTx + transfersIn - transfersOut;
+}
+
+// ── Savings aggregate ─────────────────────────────────────────────────────────
+
+/// What the vaults hold, in a form the UI can present honestly.
+///
+/// When every vault holds the same currency the figure is exact and stays in
+/// that currency. Across currencies it has to be converted, and [converted]
+/// says so — the screens render it with a `≈` and name the estimate rather
+/// than passing a converted sum off as a precise one.
+class SavingsSummary {
+  /// The vaults behind the figure, in account order.
+  final List<Account> accounts;
+  final double amount;
+  final String currency;
+
+  /// True when [amount] is a cross-currency conversion rather than a plain sum.
+  final bool converted;
+
+  const SavingsSummary({
+    required this.accounts,
+    required this.amount,
+    required this.currency,
+    required this.converted,
+  });
+
+  bool get isEmpty => accounts.isEmpty;
+}
+
+/// Totals the vaults.
+///
+/// Deliberately uses the *current* rate table via [rateToBase], not each
+/// record's stored snapshot: this is a live balance, and it has to reconcile
+/// against [computeAccountBalance] and `totalBalance`, which work the same way.
+/// Rate snapshots are for historical flows (income, expenses, fees), where
+/// re-converting at today's rate would rewrite last month's reports.
+///
+/// Kept pure and separate from Firestore so it can be tested directly.
+SavingsSummary computeSavingsSummary(
+  List<Account> savings,
+  double Function(String accountId) balanceOf,
+  double Function(String code) rateToBase,
+  String baseCurrency,
+) {
+  if (savings.isEmpty) {
+    return SavingsSummary(
+      accounts: const [],
+      amount: 0.0,
+      currency: baseCurrency,
+      converted: false,
+    );
+  }
+
+  final currencies = savings.map((a) => a.currency).toSet();
+  if (currencies.length == 1) {
+    return SavingsSummary(
+      accounts: savings,
+      amount: savings.fold(0.0, (s, a) => s + balanceOf(a.id)),
+      currency: currencies.first,
+      converted: false,
+    );
+  }
+
+  return SavingsSummary(
+    accounts: savings,
+    amount: savings.fold(
+        0.0, (s, a) => s + balanceOf(a.id) * rateToBase(a.currency)),
+    currency: baseCurrency,
+    converted: true,
+  );
 }
 
 // ── Unified ledger entry (transaction OR transfer) ────────────────────────────

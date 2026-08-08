@@ -50,10 +50,17 @@ users/{uid}/settings/prefs         AppSettings   (single doc)
 `FinanceService` opens **6 snapshot listeners** (one per path above).
 `_streamCount = 6` gates `isLoading` — **bump it if you add a stream.**
 
-Seeded on sign-up by `UserService.createUserProfile`: four accounts with the
-well-known ids `telebirr`, `cash`, `cbe`, `savings`, plus the settings doc.
-Screens address savings by `FinanceService.idSavings`, so that account is
-structural — it can't be removed from the UI.
+`UserService.createUserProfile` seeds **only** the user doc and the settings
+doc. No accounts are created — the ledger starts genuinely empty and the user
+adds their own vaults, because a list of accounts they may not hold reads as
+demo data and has to be cleaned up before the app is usable. Screens that need
+an account show `NoAccountsCard` (`lib/widgets/empty_state_card.dart`) rather
+than a form whose Save is inert.
+
+There are **no well-known account ids**. Savings is identified by
+`AccountType.savings`, so there can be zero, one, or several vaults, each in
+its own currency — see `savingsAccounts` / `savingsSummary`. Nothing is
+structural: every account, vaults included, can be soft-deleted.
 
 ---
 
@@ -123,8 +130,15 @@ pins this contract — if you add a field, add a default and a test.
 `ChangeNotifier`, one per signed-in user.
 
 **Reads:** `accounts` (active) · `allAccounts` · `spendableAccounts` (active,
-non-savings) · `findAccount` · `transactions` · `transfers` · `debts` / `iOwe` /
-`owedToMe` · `budgets` · `allLedgerEntries` / `recentLedgerEntries`
+non-savings) · `findAccount` · `transactions` · `findTransaction` · `transfers` ·
+`debts` / `iOwe` / `owedToMe` · `budgets` · `allLedgerEntries` /
+`recentLedgerEntries`
+
+**Savings** (type-driven, never by id): `savingsAccounts` · `hasSavingsAccount` ·
+`isSavingsAccount(id)` · `savingsTransfers` · `savingsHidden` · `savingsSummary`
+→ `SavingsSummary {accounts, amount, currency, converted}`. `converted` is true
+when the vaults span currencies and the total had to be converted at *current*
+rates; the UI must render that with `≈` and say so.
 
 **Currency:** `baseCurrency` · `currencyOf(accountId)` · `toBase(amount, code)` ·
 `conversionRate(from, to)` · `balanceByCurrency`
@@ -189,11 +203,22 @@ about who can see this phone's screen, not about the account): `totalHidden` ·
 
 - `app_theme.dart` — `MysticColors` + `buildMysticTheme()`. `headlineStyle()`,
   `bodyStyle()`, `labelStyle()` helpers used everywhere.
-- `app_feedback.dart` — `reportIfWriteFails`, `guardWrite`, `friendlyWriteError`,
-  and `context.showSuccess/showError`. **All Firestore writes report through
-  here** — see the next section.
+- `app_feedback.dart` — `reportIfWriteFails`, `friendlyWriteError`,
+  `showFeedback`. **All Firestore writes report through here** — see the next
+  section. The API takes a `ScaffoldMessengerState`, not a `BuildContext`,
+  because most writes report after the form has popped.
+- `empty_state_card.dart` — `EmptyStateCard` + `NoAccountsCard`. The shared
+  first-run/empty surface; use it instead of another private `_EmptyState`.
+- `account_edit_sheet.dart` — `AccountEditSheet` + `showAccountEditSheet()`.
+  Reached from both the Journal cards and the Finance Hub list.
 - `app_drawer.dart` — nav + settings, incl. Currency & rates.
 - `mystic_app_bar.dart`, `transaction_tile.dart`.
+
+**Navigation:** `MainShell` (`main_scaffold.dart`) is an `InheritedWidget`
+exposing `goToTab(index)` and `openDrawer()`. Every tab builds its *own*
+`Scaffold` and only the shell's declares a `drawer:`, so `Scaffold.of(ctx)` from
+inside a tab finds the wrong one and `openDrawer()` silently does nothing — go
+through `MainShell.maybeOf(context)`.
 
 ---
 
@@ -216,8 +241,7 @@ Navigator.of(context).pop();
 ```
 
 The messenger is captured first because the screen's own context is gone by the
-time a server rejection arrives. `guardWrite` (which *does* await) exists for
-the rare case where staying put until the server answers is correct.
+time a server rejection arrives.
 
 Save buttons additionally carry a `_saving` bool + `busy:` flag — without it a
 double-tap wrote the entry twice.
@@ -268,8 +292,18 @@ money-critical arithmetic was extracted into the pure functions listed above.
   (`accountHasActivity`) — stored amounts are in that currency and would be
   silently reinterpreted.
 - **Account removal is a soft delete** (`isActive: false`). History is preserved;
-  restore from Finance Hub. This is how users without Telebirr/a bank/cash get
-  rid of the seeded defaults.
+  restore from Finance Hub. Because it is reversible it is offered on *every*
+  account, savings vaults included.
+- **Editing an entry must preserve `date` and `rateToBase`.** `addTransaction`,
+  `addDebt` and `setBudget` are upserts keyed by document id, so an edit is
+  "prefill, keep the id, re-save" — but stamping `DateTime.now()` moves the
+  entry into the current period (changing the tithe owed and budget spend for
+  two months at once), and re-reading the live rate restates history, which is
+  the exact thing the rate snapshot exists to prevent. Use
+  `resolveRateToBase()` (`models/transaction.dart`); it re-snapshots only when
+  the currency itself changed. Same shape of trap on debts: `Debt` defaults
+  `isPaid: false`, so an edit must pass the existing value or it silently
+  un-settles a settled debt.
 - **Debts and Budgets have no currency field** — treated as base currency.
 - `use_build_context_synchronously`: the codebase pattern is to capture
   `Navigator.of(context)` / `ScaffoldMessenger.of(context)` **before** an `await`
@@ -306,9 +340,13 @@ money-critical arithmetic was extracted into the pure functions listed above.
 - The Play blockers in the table above (`applicationId`, `targetSdk`,
   `firebase_options.dart`) are the critical path.
 - `widget_test.dart` Firebase failure (above).
-- No **edit** for an existing transaction (delete exists — swipe left in the
-  Ledger, with a confirm dialog).
 - Debts and Budgets still have no `currency` field.
+- Transfers are intentionally **not** editable or deletable — they are corrected
+  by `reverseTransfer`, which records the opposing movement and keeps both
+  halves. Tapping a transfer in the Ledger opens the reversal history.
+- `balanceByCurrency` and `accountDistribution` *include* savings accounts while
+  `totalBalance` excludes them. Pre-existing inconsistency; `savingsSummary` is
+  kept strictly separate rather than deepening it.
 - No Crashlytics, no CI, no privacy policy.
 - Exchange rates are manual; no API feed (a deliberate choice, not an oversight).
 - `landing_page/` is a separate Vercel-deployed site in the same repo.

@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import '../models/user_model.dart';
 import '../screens/profile_screen.dart';
+import '../screens/main_scaffold.dart';
 import 'app_theme.dart';
 
 /// Shared AppBar used on all tab screens.
@@ -23,12 +24,25 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
       scrolledUnderElevation: 0,
 
       // ── Hamburger → opens drawer ──────────────────────────────────────────
+      //
+      // Must go through MainShell. Every tab wraps itself in its own Scaffold
+      // and only the shell's declares a `drawer:`, so `Scaffold.of(ctx)` finds
+      // the tab's — and `openDrawer()` on a drawer-less Scaffold does nothing
+      // at all, silently. The fallback covers this bar being used outside the
+      // shell, where the nearest Scaffold really is the right target.
       leading: Padding(
         padding: const EdgeInsets.only(left: 8),
         child: Builder(
           builder: (ctx) => IconButton(
             icon: const Icon(Icons.menu, color: MysticColors.primary),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
+            onPressed: () {
+              final shell = MainShell.maybeOf(ctx);
+              if (shell != null) {
+                shell.openDrawer();
+              } else {
+                Scaffold.of(ctx).openDrawer();
+              }
+            },
           ),
         ),
       ),

@@ -9,6 +9,7 @@ import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
 import '../models/transaction.dart';
+import 'add_account_screen.dart';
 
 /// Tab 3 — Sacred Giving.
 ///
@@ -98,8 +99,22 @@ class _GivingScreenState extends State<GivingScreen> {
   Future<void> _give(FinanceService svc, double suggested) async {
     final accounts = svc.spendableAccounts;
     if (accounts.isEmpty) {
-      _snack('You need an account before you can record giving.',
-          MysticColors.tertiary);
+      // Naming the problem isn't much use without a way to fix it — a new user
+      // has no accounts at all and nothing here tells them where to go.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('You need an account before you can record giving.',
+            style: bodyStyle(13, color: Colors.white)),
+        backgroundColor: MysticColors.tertiary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        action: SnackBarAction(
+          label: 'ADD ACCOUNT',
+          textColor: Colors.white,
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AddAccountScreen()),
+          ),
+        ),
+      ));
       return;
     }
 

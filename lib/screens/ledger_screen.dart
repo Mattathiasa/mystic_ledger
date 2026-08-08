@@ -5,6 +5,9 @@ import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
+import 'journal_screen.dart' show entrySlideUpRoute;
+import 'new_entry_screen.dart';
+import 'transfer_history_screen.dart';
 
 const _pageSize = 20;
 
@@ -259,13 +262,27 @@ class _LedgerBook extends StatelessWidget {
                 final entry = e.value;
                 final isLast = e.key == entries.length - 1;
 
-                // Transfers are not deletable (no individual delete in Firestore yet)
+                // Transfers are corrected by reversal, never by deletion or
+                // editing: the archive keeps both the original and the
+                // correction. Tapping one opens the history, where reversing
+                // is the only mutation on offer.
                 if (entry.kind == LedgerEntryKind.transfer) {
-                  return _LedgerRow(entry: entry, svc: svc, isLast: isLast);
+                  return _LedgerRow(
+                    entry: entry,
+                    svc: svc,
+                    isLast: isLast,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const TransferHistoryScreen()),
+                    ),
+                  );
                 }
 
                 return Dismissible(
-                  key: ValueKey(entry.id),
+                  // Scoped by kind: transaction and transfer ids are minted
+                  // from the clock in separate collections, so they are only
+                  // unique within a kind.
+                  key: ValueKey('${entry.kind.name}_${entry.id}'),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     alignment: Alignment.centerRight,
@@ -305,7 +322,19 @@ class _LedgerBook extends StatelessWidget {
                   onDismissed: (_) => reportIfWriteFails(
                       ScaffoldMessenger.maybeOf(context),
                       svc.deleteTransaction(entry.id)),
-                  child: _LedgerRow(entry: entry, svc: svc, isLast: isLast),
+                  child: _LedgerRow(
+                    entry: entry,
+                    svc: svc,
+                    isLast: isLast,
+                    // A LedgerEntry is lossy — no category, no rate snapshot —
+                    // so the edit has to start from the stored transaction.
+                    onTap: () {
+                      final tx = svc.findTransaction(entry.id);
+                      if (tx == null) return;
+                      Navigator.of(context)
+                          .push(entrySlideUpRoute(NewEntryScreen(existing: tx)));
+                    },
+                  ),
                 );
               }).toList(),
             ),
@@ -321,10 +350,15 @@ class _LedgerRow extends StatelessWidget {
   final LedgerEntry entry;
   final FinanceService svc;
   final bool isLast;
+
+  /// Transactions open for amendment; transfers open the reversal history.
+  final VoidCallback? onTap;
+
   const _LedgerRow({
     required this.entry,
     required this.svc,
     required this.isLast,
+    this.onTap,
   });
 
   @override
@@ -362,7 +396,10 @@ class _LedgerRow extends StatelessWidget {
             : '$cur ${fmt.format(entry.amount)}')
         : '${isIncome ? '+' : '-'}$cur ${fmt.format(entry.amount)}';
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
       constraints: const BoxConstraints(minHeight: 80),
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: isLast
@@ -423,6 +460,7 @@ class _LedgerRow extends StatelessWidget {
             style: bodyStyle(15, weight: FontWeight.w800, color: entryColor),
           ),
         ],
+      ),
       ),
     );
   }

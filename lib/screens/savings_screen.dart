@@ -4,8 +4,11 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
+import '../models/account_model.dart';
 import '../models/transfer_model.dart';
+import 'add_account_screen.dart';
 
 /// Screen for the Savings Vault.
 /// Shows total saved, history of deposits, and a button to deposit more.
@@ -38,8 +41,27 @@ class SavingsScreen extends StatelessWidget {
       ),
       body: Consumer<FinanceService>(
         builder: (context, svc, _) {
-          final savingsTransfers = svc.transfersForAccount(FinanceService.idSavings);
           final fmt = NumberFormat('#,##0.00');
+          final summary = svc.savingsSummary;
+
+          // Nothing is created at sign-up, so there may be no vault at all.
+          // Offer the way to make one rather than a 0.00 hero above an empty
+          // list with a deposit button that has nowhere to deposit to.
+          if (summary.isEmpty) {
+            return const SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(24, 32, 24, 40),
+              child: NoAccountsCard(
+                headline: 'No vault sealed yet',
+                body: 'A savings vault is kept apart from your spending '
+                    'accounts, so what you set aside stays set aside. Open one '
+                    'to start.',
+                presetType: AccountType.savings,
+                ctaLabel: 'Open a vault',
+              ),
+            );
+          }
+
+          final savingsTransfers = svc.savingsTransfers;
 
           return Stack(
             children: [
@@ -50,13 +72,19 @@ class SavingsScreen extends StatelessWidget {
                   children: [
                     // ── Hero card ──────────────────────────────────────────
                     _SavingsHeroCard(
-                      total: svc.totalSavings,
-                      currency:
-                          svc.currencyOf(FinanceService.idSavings),
-                      hidden:
-                          svc.isAccountHidden(FinanceService.idSavings),
+                      summary: summary,
+                      hidden: svc.savingsHidden,
                       fmt: fmt,
                     ),
+
+                    // With one vault the hero already says everything; the
+                    // breakdown only earns its space once there are several,
+                    // where each holds its own (possibly foreign) currency.
+                    if (summary.accounts.length > 1) ...[
+                      const SizedBox(height: 20),
+                      _VaultBreakdown(summary: summary, svc: svc, fmt: fmt),
+                    ],
+
                     const SizedBox(height: 32),
 
                     // ── History ────────────────────────────────────────────
@@ -107,13 +135,11 @@ class SavingsScreen extends StatelessWidget {
 // ── Hero card ─────────────────────────────────────────────────────────────────
 
 class _SavingsHeroCard extends StatelessWidget {
-  final double total;
-  final String currency;
+  final SavingsSummary summary;
   final bool hidden;
   final NumberFormat fmt;
   const _SavingsHeroCard({
-    required this.total,
-    required this.currency,
+    required this.summary,
     required this.hidden,
     required this.fmt,
   });
@@ -156,7 +182,9 @@ class _SavingsHeroCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    'SAVINGS VAULT',
+                    summary.accounts.length > 1
+                        ? '${summary.accounts.length} SAVINGS VAULTS'
+                        : 'SAVINGS VAULT',
                     style: labelStyle(9,
                         letterSpacing: 1.5, color: Colors.white.withOpacity(0.9)),
                   ),
@@ -170,12 +198,28 @@ class _SavingsHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  hidden ? '••••••' : '$currency ${fmt.format(total)}',
+                  hidden
+                      ? '••••••'
+                      : '${summary.converted ? '≈ ' : ''}${summary.currency} '
+                          '${fmt.format(summary.amount)}',
                   style: headlineStyle(40,
                       italic: false,
                       weight: FontWeight.w900,
                       color: Colors.white),
                 ),
+                // A sum across currencies is an estimate at today's rates, and
+                // it should say so rather than read as an exact figure.
+                if (summary.converted && !hidden) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Converted from '
+                    '${summary.accounts.map((a) => a.currency).toSet().length} '
+                    'currencies at today\'s rates.',
+                    style: labelStyle(9,
+                        letterSpacing: 0.5,
+                        color: Colors.white.withOpacity(0.75)),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   '"Every coin sealed in the vault is a stone in the fortress of your future."',
@@ -186,6 +230,75 @@ class _SavingsHeroCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Per-vault breakdown ───────────────────────────────────────────────────────
+
+/// Shown only when there is more than one vault.
+///
+/// The hero converts everything to one number; this is where each vault's own
+/// currency and exact balance stay visible, so the converted total never hides
+/// what is actually held where.
+class _VaultBreakdown extends StatelessWidget {
+  final SavingsSummary summary;
+  final FinanceService svc;
+  final NumberFormat fmt;
+  const _VaultBreakdown({
+    required this.summary,
+    required this.svc,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: MysticColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: MysticColors.outlineVariant.withOpacity(0.15)),
+      ),
+      child: Column(
+        children: summary.accounts.asMap().entries.map((e) {
+          final acc    = e.value;
+          final isLast = e.key == summary.accounts.length - 1;
+          final hidden = svc.isAccountHidden(acc.id);
+          final bal    = svc.accountBalance(acc.id);
+
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: isLast
+                ? null
+                : BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: MysticColors.outlineVariant.withOpacity(0.3),
+                      ),
+                    ),
+                  ),
+            child: Row(
+              children: [
+                Icon(acc.icon, size: 18, color: MysticColors.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    acc.name,
+                    style: bodyStyle(14, weight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  hidden ? '••••••' : '${acc.currency} ${fmt.format(bal)}',
+                  style: bodyStyle(14,
+                      weight: FontWeight.w700, color: MysticColors.primary),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -221,7 +334,7 @@ class _HistoryList extends StatelessWidget {
         children: transfers.asMap().entries.map((e) {
           final t      = e.value;
           final isLast = e.key == transfers.length - 1;
-          final isDeposit = t.toAccountId == FinanceService.idSavings;
+          final isDeposit = svc.isSavingsAccount(t.toAccountId);
           final fromName = svc.findAccount(t.fromAccountId)?.name ?? t.fromAccountId;
           final toName   = svc.findAccount(t.toAccountId)?.name   ?? t.toAccountId;
           final dateFmt  = DateFormat('MMM d, yyyy · h:mm a');
@@ -389,6 +502,7 @@ class _DepositSheetState extends State<_DepositSheet> {
   final _formKey    = GlobalKey<FormState>();
   final _amountCtrl = TextEditingController();
   String? _fromId;
+  String? _toId;
 
   @override
   void initState() {
@@ -396,6 +510,10 @@ class _DepositSheetState extends State<_DepositSheet> {
     // Default: first spendable account
     final spendable = widget.svc.spendableAccounts;
     if (spendable.isNotEmpty) _fromId = spendable.first.id;
+    // The sheet is only reachable when a vault exists (the FAB is hidden
+    // otherwise), so `first` is safe here.
+    final vaults = widget.svc.savingsAccounts;
+    if (vaults.isNotEmpty) _toId = vaults.first.id;
   }
 
   @override
@@ -406,14 +524,18 @@ class _DepositSheetState extends State<_DepositSheet> {
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
-    if (_fromId == null) return;
+    if (_fromId == null || _toId == null) return;
+    // Firestore rules reject a self-transfer, and with offline persistence that
+    // rejection surfaces long after the sheet has closed, as a snackbar with no
+    // obvious cause. Cheaper to refuse it here.
+    if (_fromId == _toId) return;
 
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
 
     final svc          = widget.svc;
     final fromCurrency = svc.currencyOf(_fromId!);
-    final toCurrency   = svc.currencyOf(FinanceService.idSavings);
+    final toCurrency   = svc.currencyOf(_toId!);
     // Deposits are usually same-currency; when they aren't, fall back to the
     // user's own maintained rate. The Transfer screen is where a specific
     // one-off rate can be entered.
@@ -425,7 +547,7 @@ class _DepositSheetState extends State<_DepositSheet> {
         Transfer(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           fromAccountId: _fromId!,
-          toAccountId: FinanceService.idSavings,
+          toAccountId: _toId!,
           amount: amount,
           toAmount: amount * rate,
           currency: fromCurrency,
@@ -445,6 +567,7 @@ class _DepositSheetState extends State<_DepositSheet> {
   @override
   Widget build(BuildContext context) {
     final spendable = widget.svc.spendableAccounts;
+    final vaults    = widget.svc.savingsAccounts;
 
     return Padding(
       padding:
@@ -480,6 +603,40 @@ class _DepositSheetState extends State<_DepositSheet> {
                   style: headlineStyle(24, italic: true, weight: FontWeight.w900)),
               const SizedBox(height: 24),
 
+              // A deposit moves money *into* the vault, so it needs a spending
+              // account to come from. With only vaults there is nothing to
+              // pick, and the picker plus Save would both be inert.
+              if (spendable.isEmpty) ...[
+                Text(
+                  'A deposit has to come from somewhere. Add a spending '
+                  'account — bank, mobile money or cash — and it will show up '
+                  'here.',
+                  style: bodyStyle(13,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.8)),
+                ),
+                const SizedBox(height: 24),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const AddAccountScreen()));
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: MysticColors.primary,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text('ADD AN ACCOUNT',
+                        style: labelStyle(11,
+                            letterSpacing: 1.5,
+                            color: MysticColors.onPrimary)),
+                  ),
+                ),
+              ] else ...[
+
               // From account
               Text('FROM ACCOUNT',
                   style: labelStyle(9,
@@ -510,6 +667,41 @@ class _DepositSheetState extends State<_DepositSheet> {
                     .toList(),
               ),
               const SizedBox(height: 20),
+
+              // Which vault the money lands in. Only a real choice once there
+              // is more than one — otherwise it's a dropdown with one option.
+              if (vaults.length > 1) ...[
+                Text('TO VAULT',
+                    style: labelStyle(9,
+                        letterSpacing: 1.5,
+                        color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: vaults.any((a) => a.id == _toId) ? _toId : null,
+                  onChanged: (v) { if (v != null) setState(() => _toId = v); },
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.only(bottom: 8),
+                    isDense: true,
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(
+                          color: MysticColors.outlineVariant.withOpacity(0.3),
+                          width: 1.5),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide:
+                          BorderSide(color: MysticColors.primary, width: 1.5),
+                    ),
+                  ),
+                  style: bodyStyle(15, weight: FontWeight.w600),
+                  dropdownColor: MysticColors.surfaceContainerLow,
+                  items: vaults
+                      .map((a) => DropdownMenuItem(
+                          value: a.id, child: Text('${a.name} · ${a.currency}')))
+                      .toList(),
+                ),
+                const SizedBox(height: 20),
+              ],
 
               // Amount
               Text('AMOUNT',
@@ -592,6 +784,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                   ),
                 ),
               ),
+              ],
             ],
           ),
         ),

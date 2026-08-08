@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
-import '../models/account_model.dart';
 import '../models/app_settings.dart';
 import '../models/currency_model.dart';
 
@@ -12,8 +11,13 @@ class UserService {
 
   // ── Create ────────────────────────────────────────────────────────────────
 
-  /// Called once after sign-up: writes the user document and seeds
-  /// the four default accounts (Telebirr, Cash, CBE Bank, Savings Vault).
+  /// Called once after sign-up: writes the user document and the settings doc.
+  ///
+  /// Deliberately creates **no accounts**. The ledger starts empty and the user
+  /// builds it from their own vaults — a pre-populated list of accounts they
+  /// may not hold reads as demo data and has to be cleaned up before the app is
+  /// usable. Every screen that needs an account shows a first-run prompt
+  /// instead (see `lib/widgets/empty_state_card.dart`).
   Future<void> createUserProfile({
     required String uid,
     required String name,
@@ -31,21 +35,6 @@ class UserService {
       createdAt: DateTime.now(),
     );
     batch.set(userRef, user.toMap());
-
-    // Default accounts. Any the user doesn't have can be removed later from
-    // Manage Accounts (soft-delete) and restored again.
-    final defaults = [
-      Account(id: 'telebirr', name: 'Telebirr',      type: AccountType.mobile,  currency: baseCurrency),
-      Account(id: 'cash',     name: 'Cash On Hand',  type: AccountType.cash,    currency: baseCurrency),
-      Account(id: 'cbe',      name: 'CBE Bank',      type: AccountType.bank,    currency: baseCurrency),
-      Account(id: 'savings',  name: 'Savings Vault', type: AccountType.savings, currency: baseCurrency),
-    ];
-    for (final acc in defaults) {
-      batch.set(
-        userRef.collection('accounts').doc(acc.id),
-        acc.toMap(),
-      );
-    }
 
     // Seed the settings doc so base currency is explicit from day one.
     batch.set(
