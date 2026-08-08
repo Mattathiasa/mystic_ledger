@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/sms_capture_service.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_drawer.dart';
 import 'journal_screen.dart';
@@ -51,10 +52,32 @@ class MainScaffold extends StatefulWidget {
   State<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class _MainScaffoldState extends State<MainScaffold>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The telephony plugin's background isolate may have queued drafts while
+    // the app was paused — reload so the banner and review count are current.
+    if (state == AppLifecycleState.resumed) {
+      SmsCaptureService.instance.refresh();
+    }
+  }
 
   static const _screens = [
     JournalScreen(),

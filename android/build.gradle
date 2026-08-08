@@ -23,6 +23,23 @@ subprojects {
     project.evaluationDependsOn(':app')
 }
 
+// AGP 8 requires every android module to declare a namespace. The `telephony`
+// plugin predates that requirement, so it has none — inject one from the
+// module's `group` (com.shounakmulay.telephony) here, or the build fails with
+// "Namespace not specified". `plugins.withId` fires the moment the plugin is
+// applied (including for already-applied plugins), so it works even though the
+// subprojects are force-evaluated by evaluationDependsOn above — unlike
+// `afterEvaluate`, which would hit "already evaluated".
+subprojects {
+    plugins.withId('com.android.library') {
+        android {
+            if (namespace == null) {
+                namespace project.group
+            }
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }

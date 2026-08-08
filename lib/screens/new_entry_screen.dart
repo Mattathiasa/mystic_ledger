@@ -6,6 +6,7 @@ import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
+import '../services/telebirr_parser.dart';
 import '../models/transaction.dart';
 import '../models/account_model.dart';
 
@@ -17,7 +18,11 @@ class NewEntryScreen extends StatefulWidget {
   /// The entry being amended, or null when writing a new one.
   final Transaction? existing;
 
-  const NewEntryScreen({super.key, this.existing});
+  /// A captured SMS draft to pre-fill the form with. Distinct from [existing]:
+  /// a draft always writes a *new* entry, it just starts the fields filled.
+  final CapturedSms? draft;
+
+  const NewEntryScreen({super.key, this.existing, this.draft});
 
   @override
   State<NewEntryScreen> createState() => _NewEntryScreenState();
@@ -40,15 +45,30 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   void initState() {
     super.initState();
     final e = widget.existing;
-    if (e == null) return;
+    if (e != null) {
+      _amountCtrl.text = e.amount.toStringAsFixed(2);
+      if (e.fee > 0) _feeCtrl.text = e.fee.toStringAsFixed(2);
+      _titleCtrl.text = e.title;
+      _noteCtrl.text  = e.note ?? '';
+      _type      = e.type;
+      _category  = e.category;
+      _accountId = e.accountId;
+      return;
+    }
 
-    _amountCtrl.text = e.amount.toStringAsFixed(2);
-    if (e.fee > 0) _feeCtrl.text = e.fee.toStringAsFixed(2);
-    _titleCtrl.text = e.title;
-    _noteCtrl.text  = e.note ?? '';
-    _type      = e.type;
-    _category  = e.category;
-    _accountId = e.accountId;
+    // A captured draft starts the form filled; the user still confirms the
+    // account, category, and amount before it is recorded.
+    final d = widget.draft;
+    if (d != null) {
+      if (d.amount != null) _amountCtrl.text = d.amount!.toStringAsFixed(2);
+      if (d.fee != null) _feeCtrl.text = d.fee!.toStringAsFixed(2);
+      _titleCtrl.text = d.counterparty ?? 'Telebirr';
+      _type = switch (d.direction) {
+        CapturedDirection.income => TransactionType.income,
+        _                        => TransactionType.expense,
+      };
+      if (d.reference != null) _noteCtrl.text = 'Ref: ${d.reference}';
+    }
   }
 
   /// The accounts offered in the picker.
@@ -114,8 +134,9 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
           accountId: _accountId!,
           // Keep the original date. Stamping `now` on an edit would move the
           // entry into the current period, changing the tithe owed and the
-          // budget spend for *both* the old month and this one.
-          date: existing?.date ?? DateTime.now(),
+          // budget spend for *both* the old month and this one. A captured
+          // draft carries the SMS timestamp, which is the real transaction time.
+          date: existing?.date ?? widget.draft?.date ?? DateTime.now(),
           note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
           currency: currency,
           rateToBase: resolveRateToBase(
@@ -127,7 +148,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
         ),
       ),
     );
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(true);
   }
 
   @override

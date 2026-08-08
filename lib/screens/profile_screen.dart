@@ -5,7 +5,9 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/finance_service.dart';
 import '../services/user_service.dart';
+import '../services/sms_capture_service.dart';
 import '../widgets/app_theme.dart';
+import 'captured_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Full-screen profile page — accessible from the drawer.
@@ -141,6 +143,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 // ── Account stats ─────────────────────────────────────
                 _StatsRow(svc: svc, fmt: fmt),
+
+                const SizedBox(height: 28),
+
+                // ── SMS auto-capture ───────────────────────────────────
+                const _CaptureCard(),
 
                 const SizedBox(height: 28),
 
@@ -568,6 +575,227 @@ class _StatCard extends StatelessWidget {
               style:
                   bodyStyle(13, weight: FontWeight.w700, color: color)),
         ],
+      ),
+    );
+  }
+}
+
+// ── SMS auto-capture ──────────────────────────────────────────────────────────
+
+/// Lets the app read Telebirr alerts (with explicit permission), parse them on
+/// this device, and queue them for review. Approved entries go to the ledger;
+/// raw messages never leave the phone.
+class _CaptureCard extends StatelessWidget {
+  const _CaptureCard();
+
+  Future<void> _requestPermission(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final granted = await SmsCaptureService.instance.requestPermission();
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        granted
+            ? 'SMS access granted — Telebirr alerts will be captured.'
+            : 'SMS access was denied. Auto-capture needs it to read alerts.',
+        style: bodyStyle(13, color: Colors.white),
+      ),
+      backgroundColor: granted ? MysticColors.secondary : MysticColors.tertiary,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+  }
+
+  Future<void> _backfill(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final added = await SmsCaptureService.instance.backfillInbox();
+    final (message, color) = added == -1
+        ? ('Could not scan the inbox — make sure SMS access is allowed.',
+            MysticColors.tertiary)
+        : added == 0
+            ? ('No Telebirr messages found in the inbox.',
+                MysticColors.onSurfaceVariant)
+            : ('$added captured message(s) queued for review.',
+                MysticColors.secondary);
+    messenger.showSnackBar(SnackBar(
+      content: Text(message, style: bodyStyle(13, color: Colors.white)),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: SmsCaptureService.instance,
+      builder: (context, _) {
+        final svc = SmsCaptureService.instance;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: MysticColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border:
+                Border.all(color: MysticColors.outlineVariant.withOpacity(0.15)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Header + toggle ──────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: MysticColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.mark_email_unread_outlined,
+                          size: 18, color: MysticColors.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('AUTO-CAPTURE',
+                              style: labelStyle(9,
+                                  letterSpacing: 1.5,
+                                  color: MysticColors.onSurfaceVariant
+                                      .withOpacity(0.6))),
+                          const SizedBox(height: 2),
+                          Text('Telebirr transaction alerts',
+                              style: bodyStyle(14, weight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: svc.isEnabled,
+                      activeTrackColor: MysticColors.primary.withOpacity(0.5),
+                      activeColor: MysticColors.primary,
+                      onChanged: (v) async {
+                        await svc.setEnabled(v);
+                        if (!context.mounted) return;
+                        // First-time grant happens right here, so the toggle is
+                        // a single gesture for the user.
+                        if (v && svc.supported) {
+                          await _requestPermission(context);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Body copy ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: Text(
+                  svc.supported
+                      ? 'Incoming Telebirr alerts are read on this phone, parsed, '
+                          'and queued for your review — nothing is recorded '
+                          'without you, and raw messages never leave the device.'
+                      : 'SMS auto-capture is available on Android only.',
+                  style: bodyStyle(12,
+                      color: MysticColors.onSurfaceVariant.withOpacity(0.75)),
+                ),
+              ),
+
+              // ── Actions ─────────────────────────────────────────────
+              if (svc.isEnabled && svc.supported) ...[
+                const Divider(
+                    height: 1, color: MysticColors.outlineVariant),
+                _CaptureAction(
+                  icon: Icons.notifications_active_outlined,
+                  label: 'Allow SMS access',
+                  subtitle: 'System permission to read Telebirr alerts',
+                  onTap: () => _requestPermission(context),
+                ),
+                _CaptureAction(
+                  icon: Icons.history,
+                  label: 'Scan inbox for past messages',
+                  subtitle: 'Pulls earlier Telebirr alerts into the queue',
+                  onTap: () => _backfill(context),
+                ),
+                _CaptureAction(
+                  icon: Icons.inbox_outlined,
+                  label: svc.pendingCount == 0
+                      ? 'Review captured messages'
+                      : 'Review ${svc.pendingCount} captured message(s)',
+                  subtitle: 'Approve, edit, or dismiss before they are recorded',
+                  trailing: svc.pendingCount > 0
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: MysticColors.primary.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text('${svc.pendingCount}',
+                              style: labelStyle(9,
+                                  letterSpacing: 1.0,
+                                  color: MysticColors.primary,
+                                  weight: FontWeight.w600)),
+                        )
+                      : null,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CapturedScreen()),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CaptureAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final Widget? trailing;
+  final VoidCallback onTap;
+
+  const _CaptureAction({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: MysticColors.primary.withOpacity(0.6)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: bodyStyle(14, weight: FontWeight.w600)),
+                  const SizedBox(height: 1),
+                  Text(subtitle,
+                      style: bodyStyle(11,
+                          color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
+                ],
+              ),
+            ),
+            trailing ??
+                Icon(Icons.chevron_right,
+                    size: 18,
+                    color: MysticColors.onSurfaceVariant.withOpacity(0.4)),
+          ],
+        ),
       ),
     );
   }

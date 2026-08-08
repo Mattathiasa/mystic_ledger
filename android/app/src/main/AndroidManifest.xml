@@ -3,6 +3,13 @@
          in. Release builds need it; the debug/profile manifests already have it. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- SMS auto-capture: READ_SMS lets us backfill the inbox, RECEIVE_SMS lets
+         the broadcast receiver intercept bank alerts as they arrive. Both are
+         runtime permissions — the app asks with a clear disclosure. Parsing and
+         drafts stay on-device; only approved entries ever reach Firestore. -->
+    <uses-permission android:name="android.permission.READ_SMS"/>
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+
     <application
         android:label="Mystic Ledger"
         android:name="${applicationName}"
@@ -33,6 +40,24 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- telephony plugin: forwards incoming SMS to the Dart background
+             handler (started via listenIncomingSms). The receiver fires on the
+             SMS_RECEIVED broadcast; SMS_RECEIVED is exempt from Android 8+
+             implicit-broadcast restrictions because it is high-priority. -->
+        <receiver
+            android:name="com.shounakmulay.telephony.sms.IncomingSmsReceiver"
+            android:permission="android.permission.BROADCAST_SMS"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED"/>
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name="com.shounakmulay.telephony.sms.BackgroundService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility?hl=en and

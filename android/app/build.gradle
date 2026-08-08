@@ -68,7 +68,9 @@ android {
 
     defaultConfig {
         applicationId "com.example.mystic_ledger"
-        minSdkVersion 21
+        // 23 = Android 6.0. The `telephony` plugin (SMS auto-capture) needs it,
+        // and it is the runtime-permission floor SMS access requires anyway.
+        minSdkVersion 23
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName

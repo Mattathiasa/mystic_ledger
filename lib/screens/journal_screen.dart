@@ -7,15 +7,17 @@ import '../widgets/transaction_tile.dart';
 import '../widgets/empty_state_card.dart';
 import '../widgets/account_edit_sheet.dart';
 import '../services/finance_service.dart';
+import '../services/sms_capture_service.dart';
 import '../models/account_model.dart';
 import 'main_scaffold.dart';
 import 'new_entry_screen.dart';
+import 'captured_screen.dart';
 
 /// The entry form's slide-up transition.
 ///
 /// Shared so that opening an entry to amend it feels like the same surface as
 /// writing one — the two used to differ because the FAB built its route inline.
-Route<void> entrySlideUpRoute(Widget page) => PageRouteBuilder(
+Route<T> entrySlideUpRoute<T>(Widget page) => PageRouteBuilder<T>(
       pageBuilder: (_, __, ___) => page,
       transitionsBuilder: (_, anim, __, child) => SlideTransition(
         position: Tween<Offset>(
@@ -51,6 +53,7 @@ class JournalScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const _CaptureBanner(),
                     _BalanceHero(svc: svc),
                     const SizedBox(height: 40),
                     _AccountSection(svc: svc),
@@ -71,6 +74,80 @@ class JournalScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+// ── SMS capture banner ────────────────────────────────────────────────────────
+
+/// Shown only while captured Telebirr messages are waiting to be reviewed.
+/// Tapping it opens the review queue.
+class _CaptureBanner extends StatelessWidget {
+  const _CaptureBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: SmsCaptureService.instance,
+      builder: (context, _) {
+        final count = SmsCaptureService.instance.pendingCount;
+        if (count == 0) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 28),
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CapturedScreen()),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                color: MysticColors.primaryContainer.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: MysticColors.primary.withOpacity(0.35)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: MysticColors.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.mark_email_unread_outlined,
+                        color: MysticColors.primary, size: 18),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          count == 1
+                              ? 'A transaction waits to be recorded'
+                              : '$count transactions wait to be recorded',
+                          style: headlineStyle(15,
+                              italic: false, weight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Captured from Telebirr — review before they enter the ledger',
+                          style: bodyStyle(12,
+                              color: MysticColors.onSurfaceVariant
+                                  .withOpacity(0.75)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right,
+                      color: MysticColors.primary, size: 20),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

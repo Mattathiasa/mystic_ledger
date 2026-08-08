@@ -41,6 +41,7 @@ dependencies:
   google_sign_in: ^6.2.1
   shared_preferences: ^2.2.3   # Persist UI prefs (balance visibility, etc.)
   fl_chart: ^0.68.0            # Charts for Insights screen
+  telephony: ^0.2.0           # Android-only: read SMS + listen for incoming alerts
 
 dev_dependencies:
   flutter_test:
