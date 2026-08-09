@@ -167,7 +167,7 @@ class AppDrawer extends StatelessWidget {
                         size: 14, color: MysticColors.primaryContainer),
                     const SizedBox(width: 8),
                     Text(
-                      L10n.t("Mystic Ledger  v1.0.0  ·  The Archivist's Grimoire"),
+                      L10n.t("Mystic Ledger  v1.1.0  ·  The Archivist's Grimoire"),
                       style: labelStyle(8,
                           letterSpacing: 0.8,
                           color: MysticColors.onSurfaceVariant.withOpacity(0.4)),

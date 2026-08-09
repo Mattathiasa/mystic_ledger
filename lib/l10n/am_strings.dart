@@ -166,8 +166,8 @@ const Map<String, String> amStrings = <String, String>{
   'Currency & rates': 'ገንዘብና ተመኖች',
   'Sign Out': 'ውጣ',
   'total balance': 'ጠቅላላ ቀሪ ሂሳብ',
-  "Mystic Ledger  v1.0.0  ·  The Archivist's Grimoire":
-      'Mystic Ledger  v1.0.0  ·  የመዝገብ አስተዳዳሪው ጥንታዊ መጽሐፍ',
+  "Mystic Ledger  v1.1.0  ·  The Archivist's Grimoire":
+      'Mystic Ledger  v1.1.0  ·  የመዝገብ አስተዳዳሪው ጥንታዊ መጽሐፍ',
 
   // ── Write errors ──────────────────────────────────────────────────────
   'That save was rejected. Try signing out and back in.':

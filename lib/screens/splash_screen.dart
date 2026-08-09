@@ -249,7 +249,7 @@ class _MetaRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text('V 1.0.0', style: style),
+        Text('V 1.1.0', style: style),
         const SizedBox(width: 12),
         Container(
           width: 4,
