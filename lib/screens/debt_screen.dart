@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../services/l10n.dart';
+import '../services/theme_service.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
@@ -33,6 +35,11 @@ class _DebtScreenState extends State<DebtScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -45,7 +52,7 @@ class _DebtScreenState extends State<DebtScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Debt Ledger',
+          L10n.t('Debt Ledger'),
           style: headlineStyle(22, italic: true, weight: FontWeight.w700),
         ),
         bottom: TabBar(
@@ -58,9 +65,9 @@ class _DebtScreenState extends State<DebtScreen>
           unselectedLabelColor: MysticColors.onSurfaceVariant,
           indicatorColor: MysticColors.primary,
           indicatorWeight: 2,
-          tabs: const [
-            Tab(text: 'I OWE'),
-            Tab(text: 'OWED TO ME'),
+          tabs: [
+            Tab(text: L10n.t('I OWE')),
+            Tab(text: L10n.t('OWED TO ME')),
           ],
         ),
       ),
@@ -74,14 +81,16 @@ class _DebtScreenState extends State<DebtScreen>
                   _DebtList(
                     debts: svc.iOwe,
                     allDebts: svc.debts.where((d) => d.type == DebtType.owe).toList(),
-                    emptyMessage: 'No outstanding debts — your ledger is clean.',
+                    emptyMessage:
+                        L10n.t('No outstanding debts — your ledger is clean.'),
                     type: DebtType.owe,
                     svc: svc,
                   ),
                   _DebtList(
                     debts: svc.owedToMe,
                     allDebts: svc.debts.where((d) => d.type == DebtType.owed).toList(),
-                    emptyMessage: 'No one owes you gold at the moment.',
+                    emptyMessage:
+                        L10n.t('No one owes you gold at the moment.'),
                     type: DebtType.owed,
                     svc: svc,
                   ),
@@ -163,7 +172,7 @@ class _DebtList extends StatelessWidget {
               fmt: fmt,
               currency: svc.baseCurrency),
           const SizedBox(height: 20),
-          Text('OUTSTANDING',
+          Text(L10n.t('OUTSTANDING'),
               style: labelStyle(10,
                   letterSpacing: 2.0,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
@@ -180,7 +189,7 @@ class _DebtList extends StatelessWidget {
         ],
         if (paid.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Text('SETTLED',
+          Text(L10n.t('SETTLED'),
               style: labelStyle(10,
                   letterSpacing: 2.0,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
@@ -252,7 +261,9 @@ class _SummaryBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isOwe ? 'TOTAL I OWE' : 'TOTAL OWED TO ME',
+                    isOwe
+                        ? L10n.t('TOTAL I OWE')
+                        : L10n.t('TOTAL OWED TO ME'),
                     style: labelStyle(9,
                         letterSpacing: 1.5,
                         color: isOwe
@@ -273,7 +284,9 @@ class _SummaryBanner extends StatelessWidget {
               ),
             ),
             Text(
-              '${debts.length} item${debts.length != 1 ? 's' : ''}',
+              debts.length == 1
+                  ? L10n.t('1 item')
+                  : '${debts.length} ${L10n.t('items')}',
               style: labelStyle(10, letterSpacing: 0.5),
             ),
           ],
@@ -307,7 +320,8 @@ class _DebtCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOwe   = debt.type == DebtType.owe;
     final color   = isOwe ? MysticColors.tertiary : MysticColors.secondary;
-    final dateFmt = DateFormat('MMM d, yyyy · h:mm a');
+    final dateFmt = DateFormat('MMM d, yyyy · h:mm a',
+        L10n.instance.isAmharic ? 'am' : null);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -392,8 +406,8 @@ class _DebtCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         debt.isOverdue
-                            ? 'DUE ${DateFormat('MMM d').format(debt.dueDate!)} · OVERDUE'
-                            : 'Due ${DateFormat('MMM d, yyyy').format(debt.dueDate!)}',
+                            ? '${L10n.t('DUE')} ${DateFormat('MMM d', L10n.instance.isAmharic ? 'am' : null).format(debt.dueDate!)} · ${L10n.t('OVERDUE')}'
+                            : '${L10n.t('Due')} ${DateFormat('MMM d, yyyy', L10n.instance.isAmharic ? 'am' : null).format(debt.dueDate!)}',
                         style: labelStyle(9,
                             letterSpacing: 0.6,
                             color: debt.isOverdue
@@ -445,7 +459,7 @@ class _DebtCard extends StatelessWidget {
                           color: color.withOpacity(0.3), width: 1),
                     ),
                     child: Text(
-                      'SETTLE',
+                      L10n.t('SETTLE'),
                       style: labelStyle(9,
                           letterSpacing: 1.0, color: color),
                     ),
@@ -467,7 +481,7 @@ class _DebtCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'SETTLED',
+                      L10n.t('SETTLED'),
                       style: labelStyle(9,
                           letterSpacing: 1.0,
                           color: MysticColors.secondary),
@@ -547,7 +561,7 @@ class _AddDebtFab extends StatelessWidget {
           children: [
             Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
             const SizedBox(width: 8),
-            Text('ADD DEBT',
+            Text(L10n.t('ADD DEBT'),
                 style: labelStyle(11,
                     letterSpacing: 1.5, color: MysticColors.onPrimary)),
           ],
@@ -607,12 +621,14 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
       context: context,
       initialDate: _dueDate ?? now.add(const Duration(days: 30)),
       firstDate: now.subtract(const Duration(days: 365 * 2)),
-      lastDate: now.add(Duration(days: 365 * 10)),
+      lastDate: now.add(const Duration(days: 365 * 10)),
       builder: (ctx, child) => Theme(
-        data: ThemeData(
-          colorScheme: ColorScheme.light(
-            primary: MysticColors.primary,
-            surface: MysticColors.surfaceContainerLow,
+        data: Theme.of(ctx).copyWith(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: MysticColors.primary,
+            brightness: ThemeService.instance.isDark
+                ? Brightness.dark
+                : Brightness.light,
           ),
         ),
         child: child!,
@@ -666,7 +682,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
         decoration: BoxDecoration(
           color: MysticColors.surfaceContainerLow,
-          borderRadius: BorderRadius.only(
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(28),
             topRight: Radius.circular(28),
           ),
@@ -688,7 +704,9 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text(_isEdit ? 'Amend Debt' : 'Record Debt',
+              Text(_isEdit
+                  ? L10n.t('Amend Debt')
+                  : L10n.t('Record Debt'),
                   style: headlineStyle(24, italic: true, weight: FontWeight.w900)),
               const SizedBox(height: 20),
 
@@ -697,7 +715,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                 children: [
                   Expanded(
                     child: _TypeToggle(
-                      label: 'I OWE',
+                      label: L10n.t('I OWE'),
                       selected: _type == DebtType.owe,
                       color: MysticColors.tertiary,
                       onTap: () => setState(() => _type = DebtType.owe),
@@ -706,7 +724,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _TypeToggle(
-                      label: 'OWED TO ME',
+                      label: L10n.t('OWED TO ME'),
                       selected: _type == DebtType.owed,
                       color: MysticColors.secondary,
                       onTap: () => setState(() => _type = DebtType.owed),
@@ -717,7 +735,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
               const SizedBox(height: 20),
 
               // Person name
-              Text('PERSON / ORGANISATION',
+              Text(L10n.t('PERSON / ORGANISATION'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -728,7 +746,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                 textCapitalization: TextCapitalization.words,
                 decoration: InputDecoration(
                   border: InputBorder.none,
-                  hintText: 'Who is involved?',
+                  hintText: L10n.t('Who is involved?'),
                   hintStyle: bodyStyle(16)
                       .copyWith(color: MysticColors.onSurface.withOpacity(0.25)),
                   contentPadding: const EdgeInsets.only(bottom: 8),
@@ -743,13 +761,14 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                         BorderSide(color: MysticColors.primary, width: 1.5),
                   ),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Enter a name' : null,
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? L10n.t('Enter a name')
+                    : null,
               ),
               const SizedBox(height: 20),
 
               // Amount
-              Text('AMOUNT',
+              Text(L10n.t('AMOUNT'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -784,9 +803,13 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                         isDense: true,
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Enter an amount';
+                        if (v == null || v.isEmpty) {
+                          return L10n.t('Enter an amount');
+                        }
                         final p = double.tryParse(v.replaceAll(',', ''));
-                        if (p == null || p <= 0) return 'Enter a valid amount';
+                        if (p == null || p <= 0) {
+                          return L10n.t('Enter a valid amount');
+                        }
                         return null;
                       },
                     ),
@@ -799,7 +822,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
               const SizedBox(height: 16),
 
               // Due date
-              Text('DUE DATE (OPTIONAL)',
+              Text(L10n.t('DUE DATE (OPTIONAL)'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -832,8 +855,9 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                       const SizedBox(width: 10),
                       Text(
                         _dueDate == null
-                            ? 'No deadline set'
-                            : DateFormat('EEE, MMM d, yyyy')
+                            ? L10n.t('No deadline set')
+                            : DateFormat('EEE, MMM d, yyyy',
+                                    L10n.instance.isAmharic ? 'am' : null)
                                 .format(_dueDate!),
                         style: bodyStyle(14,
                             weight: FontWeight.w600,
@@ -846,7 +870,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                         GestureDetector(
                           onTap: () => setState(() => _dueDate = null),
                           child: Padding(
-                            padding: EdgeInsets.only(right: 12),
+                            padding: const EdgeInsets.only(right: 12),
                             child: Icon(Icons.close,
                                 size: 16,
                                 color: MysticColors.onSurfaceVariant),
@@ -859,7 +883,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
               const SizedBox(height: 16),
 
               // Note
-              Text('NOTE (OPTIONAL)',
+              Text(L10n.t('NOTE (OPTIONAL)'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -871,7 +895,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                     .copyWith(fontStyle: FontStyle.italic),
                 decoration: InputDecoration(
                   border: InputBorder.none,
-                  hintText: 'Add context...',
+                  hintText: L10n.t('Add context...'),
                   hintStyle: bodyStyle(13,
                           color: MysticColors.onSurface.withOpacity(0.2))
                       .copyWith(fontStyle: FontStyle.italic),
@@ -907,7 +931,9 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                   ),
                   child: Center(
                     child: Text(
-                      _isEdit ? 'Update Record' : 'Record in Ledger',
+                      _isEdit
+                          ? L10n.t('Update Record')
+                          : L10n.t('Record in Ledger'),
                       style: headlineStyle(18,
                           italic: true,
                           weight: FontWeight.w900,
@@ -925,7 +951,7 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: _confirmRemove,
-                  child: Text('Remove this debt',
+                  child: Text(L10n.t('Remove this debt'),
                       style: bodyStyle(13, color: MysticColors.tertiary)),
                 ),
               ],
@@ -947,23 +973,23 @@ class _AddDebtSheetState extends State<_AddDebtSheet> {
         backgroundColor: MysticColors.surfaceContainerLow,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Delete debt?',
+        title: Text(L10n.t('Delete debt?'),
             style: headlineStyle(20, italic: true, weight: FontWeight.w700)),
         content: Text(
-          'Remove the record of ${debt.name} for '
-          '${svc.baseCurrency} ${fmt.format(debt.amount)}? '
-          'This cannot be undone.',
+          '${L10n.t('Remove the record of')} ${debt.name} ${L10n.t('for')} '
+              '${svc.baseCurrency} ${fmt.format(debt.amount)}? '
+              '${L10n.t('This cannot be undone.')}',
           style: bodyStyle(14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
+            child: Text(L10n.t('Cancel'),
                 style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete',
+            child: Text(L10n.t('Delete'),
                 style: bodyStyle(14,
                     weight: FontWeight.w700, color: MysticColors.tertiary)),
           ),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
+import '../services/cloud_sync_service.dart';
+import '../services/l10n.dart';
 import '../models/user_model.dart';
 import '../screens/profile_screen.dart';
 import '../screens/main_scaffold.dart';
@@ -16,6 +18,11 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final uid = AuthService().currentUser?.uid ?? '';
 
     return AppBar(
@@ -58,8 +65,70 @@ class MysticAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
 
-      // ── Profile avatar → opens ProfileScreen ─────────────────────────────
+      // ── Cloud sync / offline dot ─────────────────────────────────────────
       actions: [
+        // Rebuilds independently of the (const) app bar: it listens to the
+        // sync service, not the palette.
+        ValueListenableBuilder<CloudSyncState>(
+          valueListenable: CloudSyncService.instance.state,
+          builder: (context, state, _) {
+            final (label, tooltip, color) = switch (state) {
+              CloudSyncState.saving => (
+                  L10n.t('Saving'),
+                  L10n.t('Saving to Cloud…'),
+                  MysticColors.tertiary,
+                ),
+              CloudSyncState.offline => (
+                  L10n.t('Offline'),
+                  L10n.t("You're offline — changes will sync when you're back online."),
+                  MysticColors.onSurfaceVariant,
+                ),
+              CloudSyncState.synced => (
+                  L10n.t('Synced'),
+                  L10n.t('Synced to Cloud'),
+                  MysticColors.secondary,
+                ),
+            };
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Center(
+                child: Tooltip(
+                  message: tooltip,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: color,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          label,
+                          style: labelStyle(9,
+                              letterSpacing: 0.5,
+                              weight: FontWeight.w600,
+                              color: color),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
         Padding(
           padding: const EdgeInsets.only(right: 16),
           child: StreamBuilder<UserModel?>(

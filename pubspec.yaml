@@ -30,11 +30,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   cupertino_icons: ^1.0.6
   provider: ^6.1.2        # Simple state management
   google_fonts: ^6.2.1    # Epilogue, Manrope, Space Grotesk
-  intl: ^0.19.0           # Date & number formatting
+  intl: ^0.18.1           # Date & number formatting (pinned by flutter_localizations)
   firebase_core: ^2.32.0
   firebase_auth: ^4.20.0
   cloud_firestore: ^4.17.5
@@ -50,6 +52,10 @@ dependencies:
   timezone: ^0.10.1
   home_widget: ^0.5.0
   flutter_local_notifications: ^18.0.1
+  file_picker: ^8.0.5        # CSV import / backup restore
+  flutter_secure_storage: ^9.2.2   # hardware-backed lock flag (KeyStore/Keychain)
+  cryptography: ^2.7.0       # AES-256-GCM encrypted .mlbackup
+  connectivity_plus: ^6.1.0  # offline detection (works on mobile, web, desktop)
 
 dev_dependencies:
   flutter_test:

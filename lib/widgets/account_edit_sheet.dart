@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/finance_service.dart';
+import '../services/l10n.dart';
 import '../models/account_model.dart';
 import '../models/currency_model.dart';
 import 'app_theme.dart';
@@ -63,6 +64,11 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final acc      = widget.account;
     final svc      = widget.svc;
     final locked   = svc.accountHasActivity(acc.id);
@@ -89,11 +95,11 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
             ),
           ),
           const SizedBox(height: 24),
-          Text('Edit Account',
+          Text(L10n.t('Edit Account'),
               style: headlineStyle(26, italic: true, weight: FontWeight.w900)),
           const SizedBox(height: 24),
 
-          Text('NAME',
+          Text(L10n.t('NAME'),
               style: labelStyle(10,
                   letterSpacing: 1.5,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -115,7 +121,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
           ),
 
           const SizedBox(height: 20),
-          Text('CURRENCY',
+          Text(L10n.t('CURRENCY'),
               style: labelStyle(10,
                   letterSpacing: 1.5,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -150,8 +156,8 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
           if (locked) ...[
             const SizedBox(height: 6),
             Text(
-              'Currency is locked — this account already has entries recorded '
-              'in $_currency. Create a new account for a different currency.',
+              L10n.t('Currency is locked — this account already has entries recorded '
+                  'in $_currency. Create a new account for a different currency.'),
               style: labelStyle(10,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
             ),
@@ -160,7 +166,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
           // Savings vaults can carry a goal; the hero card shows progress.
           if (acc.type == AccountType.savings) ...[
             const SizedBox(height: 20),
-            Text('SAVINGS GOAL (OPTIONAL)',
+            Text(L10n.t('SAVINGS GOAL (OPTIONAL)'),
                 style: labelStyle(10,
                     letterSpacing: 1.5,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -189,7 +195,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
-                      hintText: 'Target amount',
+                      hintText: L10n.t('Target amount'),
                       hintStyle: bodyStyle(16,
                           color: MysticColors.onSurface.withOpacity(0.25)),
                     ),
@@ -199,7 +205,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              'How much are you saving up to? Leave blank to remove the goal.',
+              L10n.t('How much are you saving up to? Leave blank to remove the goal.'),
               style: labelStyle(10,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
             ),
@@ -215,7 +221,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            child: Text('Save Changes',
+            child: Text(L10n.t('Save Changes'),
                 style: headlineStyle(16,
                     italic: false,
                     weight: FontWeight.w700,
@@ -229,7 +235,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
           const SizedBox(height: 8),
           TextButton(
             onPressed: _confirmRemove,
-            child: Text('Remove this account',
+            child: Text(L10n.t('Remove this account'),
                 style: bodyStyle(13, color: MysticColors.tertiary)),
           ),
         ],
@@ -279,27 +285,29 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: MysticColors.surfaceContainerLow,
-        title: Text('Remove ${acc.name}?',
+        title: Text('${L10n.t('Remove')} ${acc.name}?',
             style: headlineStyle(18, italic: true, weight: FontWeight.w700)),
         content: Text(
           balance != 0
               // Removing an account holding money would make the total drop.
-              ? 'This account still holds ${acc.currency} ${fmt.format(balance)}. '
-                  'Removing it hides that balance from your totals. Its history '
-                  'is preserved and you can restore it at any time.'
-              : 'This hides "${acc.name}" from your home screen and pickers. '
-                  'Its history is preserved and you can restore it at any time.',
+              ? '${L10n.t('This account still holds')} ${acc.currency} '
+                  '${fmt.format(balance)}. '
+                  '${L10n.t('Removing it hides that balance from your totals. Its history '
+                      'is preserved and you can restore it at any time.')}'
+              : '${L10n.t('This hides')} "${acc.name}" '
+                  '${L10n.t('from your home screen and pickers. Its history '
+                      'is preserved and you can restore it at any time.')}',
           style: bodyStyle(14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text('Cancel',
+            child: Text(L10n.t('Cancel'),
                 style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text('Remove',
+            child: Text(L10n.t('Remove'),
                 style: bodyStyle(14,
                     weight: FontWeight.w700, color: MysticColors.tertiary)),
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mystic_ledger/services/sms_capture_store.dart';
+import 'package:mystic_ledger/services/sms_parser.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,10 +22,65 @@ void main() {
   test('captureIncoming ignores messages from unknown banks', () async {
     await SmsCaptureStore.setEnabled(true);
     final draft = await SmsCaptureStore.captureIncoming(
-      sender: 'AWASH',
+      sender: 'ZEMEN BANK',
       body: 'Your account was credited with ETB 900.',
     );
     expect(draft, isNull);
+  });
+
+  test('queues real CBE alerts from the CBE sender', () async {
+    await SmsCaptureStore.setEnabled(true);
+    const body = 'Dear Mr Mattathias your Account 1****0486 has been '
+        'credited by SALARY SUSPENSE AGOZA GEBEYA BRANCH with ETB 13000.00. '
+        'Your Current Balance is ETB 21878.45. Thank you for Banking with CBE!';
+    final draft = await SmsCaptureStore.captureIncoming(
+        sender: 'CBE', body: body);
+    expect(draft, isNotNull);
+    expect(draft!.bank, CapturedBank.cbe);
+    expect(draft.amount, 13000.0);
+    expect(draft.direction, CapturedDirection.income);
+    expect(draft.counterparty, 'SALARY SUSPENSE AGOZA GEBEYA BRANCH');
+    expect(draft.confidence, SmsConfidence.high);
+  });
+
+  test('skips noise with no amount and no direction (OTPs, promos)', () async {
+    await SmsCaptureStore.setEnabled(true);
+    final draft = await SmsCaptureStore.captureIncoming(
+      sender: '127',
+      body: 'Your telebirr OTP is 482913. Valid for 5 minutes. Ethio telecom',
+    );
+    expect(draft, isNull);
+    expect(await SmsCaptureStore.loadDrafts(), isEmpty);
+  });
+
+  test('pruneUnparsed drops junk drafts but keeps recordable ones', () async {
+    await SmsCaptureStore.setEnabled(true);
+    await SmsCaptureStore.captureIncoming(
+      sender: 'CBE',
+      body: 'credited by SALARY with ETB 13000.00',
+    );
+    // A junk draft queued before the skip rule existed.
+    await SmsCaptureStore.addDraft(CapturedSms(
+      id: 'sig:junk1',
+      bank: CapturedBank.telebirr,
+      sender: '127',
+      body: 'OTP 1234',
+      amount: null,
+      direction: CapturedDirection.unknown,
+      counterparty: null,
+      fee: null,
+      reference: null,
+      date: null,
+      capturedAt: DateTime.now(),
+      confidence: SmsConfidence.low,
+    ));
+
+    final removed = await SmsCaptureStore.pruneUnparsed();
+    expect(removed, 1);
+
+    final remaining = await SmsCaptureStore.loadDrafts();
+    expect(remaining.length, 1);
+    expect(remaining.first.amount, 13000.0);
   });
 
   test('captures, dedups, and queues exactly one draft per message', () async {

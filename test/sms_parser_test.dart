@@ -34,6 +34,19 @@ const realCbeCredit = 'Dear Mr Mattathias your Account 1****0486 has been '
     'Current Balance is ETB 21878.45. Thank you for Banking with CBE! for '
     'Reciept https://apps.cbe.com.et:100/BranchReceipt/FT26217N43BR&52290486';
 
+const realAwashSent = 'Dear Customer; Telebirr Transfer of 300.00 ETB to '
+    'Nehimya Kibakidus Jemaneh  - 251993933119 from 013490536312900/BANK,  '
+    'Reason- Ertip, Charge 5.00 VAT: 0.75 EDRRF 0.25 ETB. Your Balance is  '
+    'ETB 3,009.85 . Receipt Link: '
+    'https://awashpay.awashbank.com:8225/-2KG5MVUP5A-5I5U1F. Contact Center '
+    '8980.';
+
+const realAwashReceived = 'Dear Customer, your Account 01349xxxxxx2900 has '
+    'been Credited with ETB 1700.00 on 2026-08-05 09:25:51 by NEHIMYA '
+    'KIBAKIDUS JEMANEH. Your balance now is ETB 3315.85. For any complaint or '
+    'enquiry, please call 8980. Subscribe to our official Telegram channel: '
+    'https://t.me/awash_bank_official for more information. Awash Bank.';
+
 void main() {
   group('detectBank', () {
     test('identifies Telebirr from body or sender', () {
@@ -52,6 +65,15 @@ void main() {
           CapturedBank.cbe);
     });
 
+    test('identifies Awash from sender or body (even when it says Telebirr)',
+        () {
+      expect(detectBank(sender: 'Awash Bank', body: 'hi'), CapturedBank.awash);
+      expect(detectBank(sender: '8300', body: realAwashSent),
+          CapturedBank.awash);
+      expect(detectBank(sender: '8300', body: realAwashReceived),
+          CapturedBank.awash);
+    });
+
     test('returns null for unrelated messages', () {
       expect(
           detectBank(
@@ -59,7 +81,7 @@ void main() {
           isNull);
       expect(
           detectBank(
-              sender: 'AWASH', body: 'Your account balance is ETB 500.00'),
+              sender: '9999', body: 'Your account balance is ETB 500.00'),
           isNull);
     });
   });
@@ -106,6 +128,29 @@ void main() {
       expect(r.direction, CapturedDirection.income);
       expect(r.counterparty, 'SALARY SUSPENSE AGOZA GEBEYA BRANCH');
       expect(r.reference, 'FT26217N43BR');
+      expect(r.fee, isNull);
+      expect(r.confidence, SmsConfidence.high);
+    });
+  });
+
+  group('real Awash samples', () {
+    test('transfer out: amount, payee, combined charge+VAT+EDRRF, receipt ref',
+        () {
+      final r = parseSms(CapturedBank.awash, realAwashSent);
+      expect(r.amount, 300.0);
+      expect(r.direction, CapturedDirection.expense);
+      expect(r.counterparty, 'Nehimya Kibakidus Jemaneh');
+      // Charge 5.00 + VAT 0.75 + EDRRF 0.25.
+      expect(r.fee, closeTo(6.0, 0.0001));
+      expect(r.reference, '-2KG5MVUP5A-5I5U1F');
+      expect(r.confidence, SmsConfidence.high);
+    });
+
+    test('credit in: amount, payer name, no fee', () {
+      final r = parseSms(CapturedBank.awash, realAwashReceived);
+      expect(r.amount, 1700.0);
+      expect(r.direction, CapturedDirection.income);
+      expect(r.counterparty, 'NEHIMYA KIBAKIDUS JEMANEH');
       expect(r.fee, isNull);
       expect(r.confidence, SmsConfidence.high);
     });

@@ -4,8 +4,11 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../services/l10n.dart';
 import '../services/finance_service.dart';
 import '../services/rate_fetcher.dart';
+import '../services/lock_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../models/currency_model.dart';
 
 /// Base currency and the exchange rates used to convert other currencies into
@@ -20,6 +23,11 @@ class CurrencySettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -31,7 +39,7 @@ class CurrencySettingsScreen extends StatelessWidget {
           color: MysticColors.onSurface,
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Currency',
+        title: Text(L10n.t('Currency'),
             style: headlineStyle(22, italic: true, weight: FontWeight.w700)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.5),
@@ -54,14 +62,14 @@ class CurrencySettingsScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 60),
             children: [
-              Text('BASE CURRENCY',
+              Text(L10n.t('BASE CURRENCY'),
                   style: labelStyle(10,
                       letterSpacing: 1.5,
                       color:
                           MysticColors.onSurfaceVariant.withOpacity(0.7))),
               const SizedBox(height: 8),
               Text(
-                'Your home total and all reports are shown in this currency.',
+                L10n.t('Your home total and all reports are shown in this currency.'),
                 style: bodyStyle(13, color: MysticColors.onSurfaceVariant),
               ),
               const SizedBox(height: 12),
@@ -79,8 +87,12 @@ class CurrencySettingsScreen extends StatelessWidget {
                     isExpanded: true,
                     dropdownColor: MysticColors.surfaceContainerLow,
                     style: bodyStyle(15, weight: FontWeight.w600),
-                    onChanged: (v) {
+                    onChanged: (v) async {
                       if (v == null || v == base) return;
+                      // Re-totalling every report in a new base currency is
+                      // high-impact — re-verify the owner first.
+                      if (!await LockService.instance.requireAuth()) return;
+                      if (!context.mounted) return;
                       reportIfWriteFails(ScaffoldMessenger.maybeOf(context),
                           svc.setBaseCurrency(v));
                     },
@@ -98,7 +110,7 @@ class CurrencySettingsScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('EXCHANGE RATES',
+                  Text(L10n.t('EXCHANGE RATES'),
                       style: labelStyle(10,
                           letterSpacing: 1.5,
                           color: MysticColors.onSurfaceVariant
@@ -108,9 +120,8 @@ class CurrencySettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'What one unit of each currency is worth in $base. Used to '
-                'total accounts held in other currencies. Past transfers keep '
-                'the rate they were recorded with.',
+                '${L10n.t('What one unit of each currency is worth in')} $base. '
+                '${L10n.t('Used to total accounts held in other currencies. Past transfers keep the rate they were recorded with.')}',
                 style: bodyStyle(13, color: MysticColors.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
@@ -126,9 +137,8 @@ class CurrencySettingsScreen extends StatelessWidget {
                             MysticColors.outlineVariant.withOpacity(0.2)),
                   ),
                   child: Text(
-                    'Every account is in $base, so no rates are needed. '
-                    'Give an account a different currency and it will appear '
-                    'here.',
+                    '${L10n.t('Every account is in')} $base, '
+                    '${L10n.t('so no rates are needed. Give an account a different currency and it will appear here.')}',
                     style: bodyStyle(13,
                             color: MysticColors.onSurfaceVariant)
                         .copyWith(fontStyle: FontStyle.italic),
@@ -170,23 +180,33 @@ class _RefreshRatesButtonState extends State<_RefreshRatesButton> {
 
   Future<void> _refresh() async {
     if (_busy) return;
-    setState(() => _busy = true);
 
     final messenger = ScaffoldMessenger.of(context);
     void snack(String msg, Color color) => messenger.showSnackBar(SnackBar(
-          content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+          content: Text(msg, style: bodyStyle(13, color: readableOn(color))),
           backgroundColor: color,
           behavior: SnackBarBehavior.floating,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
 
+    // Live rates need the network — say so up front instead of failing a few
+    // seconds later with a generic message.
+    if (!CloudSyncService.instance.online.value) {
+      snack(
+          L10n.t("You're offline — rates can't be refreshed right now."),
+          MysticColors.tertiary);
+      return;
+    }
+
+    setState(() => _busy = true);
+
     final result = await RateFetcher.fetch(baseCurrency: widget.base);
     if (!mounted) return;
     setState(() => _busy = false);
 
     if (result == null) {
-      snack('Could not reach the rate service — try again later.',
+      snack(L10n.t('Could not reach the rate service — try again later.'),
           MysticColors.tertiary);
       return;
     }
@@ -201,7 +221,9 @@ class _RefreshRatesButtonState extends State<_RefreshRatesButton> {
       await widget.svc.setRate(code, rate);
       updated++;
     }
-    snack('Rates refreshed for $updated currencies.', MysticColors.secondary);
+    snack('${L10n.t('Rates refreshed for')} $updated '
+        '${L10n.t('currencies.')}',
+        MysticColors.secondary);
   }
 
   @override
@@ -229,7 +251,7 @@ class _RefreshRatesButtonState extends State<_RefreshRatesButton> {
                   Icon(Icons.refresh,
                       size: 13, color: MysticColors.onPrimary),
                   const SizedBox(width: 5),
-                  Text('REFRESH RATES',
+                  Text(L10n.t('REFRESH RATES'),
                       style: labelStyle(9,
                           letterSpacing: 1.0,
                           color: MysticColors.onPrimary,
@@ -347,8 +369,8 @@ class _RateRowState extends State<_RateRow> {
           if (widget.rate == 1.0) ...[
             const SizedBox(height: 6),
             Text(
-              'No rate set — this currency is currently counted 1:1 in your '
-              'total, which is almost certainly wrong.',
+              L10n.t('No rate set — this currency is currently counted 1:1 in your '
+                  'total, which is almost certainly wrong.'),
               style: labelStyle(10, color: MysticColors.tertiary),
             ),
           ] else ...[

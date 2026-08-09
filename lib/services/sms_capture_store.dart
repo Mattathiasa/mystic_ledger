@@ -67,6 +67,19 @@ class SmsCaptureStore {
     await _saveDrafts(drafts);
   }
 
+  /// Drops queued drafts that never carried an amount *or* a direction — junk
+  /// captured before the skip rule existed. Returns how many were removed.
+  static Future<int> pruneUnparsed() async {
+    final drafts = await loadDrafts();
+    final clean = drafts
+        .where((d) =>
+            d.amount != null || d.direction != CapturedDirection.unknown)
+        .toList();
+    if (clean.length == drafts.length) return 0;
+    await _saveDrafts(clean);
+    return drafts.length - clean.length;
+  }
+
   // ── Dedup: signatures already turned into drafts ──────────────────────────
 
   static Future<Set<String>> _loadProcessed() async {
@@ -135,6 +148,16 @@ class SmsCaptureStore {
     if (await isProcessed(signature)) return null;
 
     final parsed = parseSms(bank, body);
+
+    // A message that reveals neither an amount nor a direction (OTPs, promo
+    // blasts, balance-only notices from a bank shortcode) is noise, not a
+    // transaction. Skip it so the review queue holds only recordable entries.
+    if (parsed.amount == null &&
+        parsed.direction == CapturedDirection.unknown) {
+      await markProcessed(signature);
+      return null;
+    }
+
     final draft = CapturedSms(
       id: signature,
       bank: bank,

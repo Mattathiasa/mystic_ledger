@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../services/l10n.dart';
 import '../services/finance_service.dart';
 import '../models/transfer_model.dart';
 
@@ -16,6 +17,11 @@ class TransferHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -27,7 +33,7 @@ class TransferHistoryScreen extends StatelessWidget {
           color: MysticColors.onSurface,
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Transfer Record',
+        title: Text(L10n.t('Transfer Record'),
             style: headlineStyle(22, italic: true, weight: FontWeight.w700)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.5),
@@ -43,7 +49,9 @@ class TransferHistoryScreen extends StatelessWidget {
                 child: CircularProgressIndicator(color: MysticColors.primary));
           }
           final transfers = svc.transfers;
-          if (transfers.isEmpty) return const _EmptyState();
+          // Non-const on purpose: must rebuild on theme/locale change.
+          // ignore: prefer_const_constructors
+          if (transfers.isEmpty) return _EmptyState();
 
           final totalFees = transfers.fold<double>(0, (s, t) => s + t.feeInBase);
 
@@ -114,7 +122,7 @@ class _FeeSummary extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('LOST TO TRANSFER FEES',
+                Text(L10n.t('LOST TO TRANSFER FEES'),
                     style: labelStyle(9,
                         letterSpacing: 1.5, color: MysticColors.tertiary)),
                 const SizedBox(height: 4),
@@ -123,7 +131,10 @@ class _FeeSummary extends StatelessWidget {
                         italic: false,
                         weight: FontWeight.w900,
                         color: MysticColors.tertiary)),
-                Text('across $count transfer${count == 1 ? '' : 's'}',
+                Text(
+                    count == 1
+                        ? '${L10n.t('across')} 1 ${L10n.t('transfer')}'
+                        : '${L10n.t('across')} $count ${L10n.t('transfers')}',
                     style: labelStyle(9,
                         letterSpacing: 0.5,
                         color:
@@ -155,8 +166,9 @@ class _TransferRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fmt      = NumberFormat('#,##0.00');
-    final fromName = svc.findAccount(transfer.fromAccountId)?.name ?? 'Unknown';
-    final toName   = svc.findAccount(transfer.toAccountId)?.name ?? 'Unknown';
+    final fromName =
+        svc.findAccount(transfer.fromAccountId)?.name ?? L10n.t('Unknown');
+    final toName = svc.findAccount(transfer.toAccountId)?.name ?? L10n.t('Unknown');
     final isReversal = transfer.isReversal;
 
     // A reversed original is struck through so the record reads honestly.
@@ -200,8 +212,8 @@ class _TransferRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (reversed) const _Badge(text: 'REVERSED'),
-              if (isReversal) const _Badge(text: 'REVERSAL'),
+              if (reversed) _Badge(text: L10n.t('REVERSED')),
+              if (isReversal) _Badge(text: L10n.t('REVERSAL')),
             ],
           ),
           const SizedBox(height: 10),
@@ -232,7 +244,9 @@ class _TransferRow extends StatelessWidget {
           Row(
             children: [
               Text(
-                DateFormat('MMM d, yyyy · HH:mm').format(transfer.date),
+                DateFormat('MMM d, yyyy · HH:mm',
+                        L10n.instance.isAmharic ? 'am' : null)
+                    .format(transfer.date),
                 style: labelStyle(9,
                     letterSpacing: 0.5,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
@@ -240,7 +254,7 @@ class _TransferRow extends StatelessWidget {
               if (transfer.fee > 0) ...[
                 const SizedBox(width: 10),
                 Text(
-                  'fee ${transfer.currency} ${fmt.format(transfer.fee)}',
+                  '${L10n.t('fee')} ${transfer.currency} ${fmt.format(transfer.fee)}',
                   style: labelStyle(9,
                       letterSpacing: 0.5, color: MysticColors.tertiary),
                 ),
@@ -285,7 +299,7 @@ class _TransferRow extends StatelessWidget {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                label: Text('REVERSE',
+                label: Text(L10n.t('REVERSE'),
                     style: labelStyle(10,
                         letterSpacing: 1.2, color: MysticColors.tertiary)),
               ),
@@ -306,7 +320,7 @@ class _TransferRow extends StatelessWidget {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
           backgroundColor: MysticColors.surfaceContainerLow,
-          title: Text('Reverse this transfer?',
+          title: Text(L10n.t('Reverse this transfer?'),
               style:
                   headlineStyle(19, italic: true, weight: FontWeight.w700)),
           content: Column(
@@ -314,8 +328,8 @@ class _TransferRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'A matching transfer in the opposite direction will be '
-                'recorded. Both entries stay in your archive.',
+                L10n.t('A matching transfer in the opposite direction will be '
+                    'recorded. Both entries stay in your archive.'),
                 style: bodyStyle(14),
               ),
               if (transfer.fee > 0) ...[
@@ -323,9 +337,10 @@ class _TransferRow extends StatelessWidget {
                 CheckboxActivated(
                   value: refundFee,
                   onChanged: (v) => setLocal(() => refundFee = v),
-                  label: 'Also refund the '
-                      '${transfer.currency} ${fmt.format(transfer.fee)} fee',
-                  hint: 'Leave off if the bank kept it.',
+                  label: '${L10n.t('Also refund the')} '
+                      '${transfer.currency} ${fmt.format(transfer.fee)} '
+                      '${L10n.t('fee')}',
+                  hint: L10n.t('Leave off if the bank kept it.'),
                 ),
               ],
             ],
@@ -333,12 +348,12 @@ class _TransferRow extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text('Cancel',
+              child: Text(L10n.t('Cancel'),
                   style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text('Reverse',
+              child: Text(L10n.t('Reverse'),
                   style: bodyStyle(14,
                       weight: FontWeight.w700,
                       color: MysticColors.tertiary)),
@@ -353,7 +368,7 @@ class _TransferRow extends StatelessWidget {
     try {
       await svc.reverseTransfer(transfer.id, refundFee: refundFee);
       messenger.showSnackBar(_snack(
-        'Transfer reversed — the ledger has been corrected.',
+        L10n.t('Transfer reversed — the ledger has been corrected.'),
         MysticColors.secondary,
       ));
     } catch (e) {
@@ -365,7 +380,7 @@ class _TransferRow extends StatelessWidget {
   }
 
   SnackBar _snack(String msg, Color bg) => SnackBar(
-        content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+        content: Text(msg, style: bodyStyle(13, color: readableOn(bg))),
         backgroundColor: bg,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -464,7 +479,7 @@ class _EmptyState extends StatelessWidget {
             Icon(Icons.swap_horiz,
                 size: 56, color: MysticColors.outlineVariant),
             const SizedBox(height: 12),
-            Text('No transfers recorded yet',
+            Text(L10n.t('No transfers recorded yet'),
                 style: headlineStyle(16,
                     italic: true,
                     weight: FontWeight.w600,

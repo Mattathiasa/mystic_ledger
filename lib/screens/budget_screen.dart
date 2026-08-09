@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../services/l10n.dart';
 import '../models/budget_model.dart';
 import '../models/transaction.dart';
 import '../services/finance_service.dart';
@@ -13,6 +14,11 @@ class BudgetScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -24,7 +30,7 @@ class BudgetScreen extends StatelessWidget {
           color: MysticColors.onSurface,
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Budget Scrolls',
+        title: Text(L10n.t('Budget Scrolls'),
             style: headlineStyle(22, italic: true, weight: FontWeight.w700)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.5),
@@ -45,7 +51,7 @@ class BudgetScreen extends StatelessWidget {
               children: [
                 // ── Subtitle ──────────────────────────────────────────────
                 Text(
-                  'SET SPENDING LIMITS PER PERIOD',
+                  L10n.t('SET SPENDING LIMITS PER PERIOD'),
                   style: labelStyle(9,
                       letterSpacing: 2.0,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
@@ -78,10 +84,12 @@ class BudgetScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showSheet(context),
         backgroundColor: MysticColors.primary,
-        foregroundColor: Colors.white,
+        foregroundColor: MysticColors.onPrimary,
         icon: const Icon(Icons.add),
-        label: Text('New Budget',
-            style: bodyStyle(14, weight: FontWeight.w700, color: Colors.white)),
+        label: Text(L10n.t('New Budget'),
+            style: bodyStyle(14,
+                weight: FontWeight.w700,
+                color: MysticColors.onPrimary)),
       ),
     );
   }
@@ -147,7 +155,7 @@ class _BudgetHistorySheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Budget History',
+                  Text(L10n.t('Budget History'),
                       style: headlineStyle(24,
                           italic: true, weight: FontWeight.w900)),
                   const SizedBox(height: 4),
@@ -204,10 +212,10 @@ class _BudgetHistorySheet extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(
                               h.over
-                                  ? 'Over by ${svc.baseCurrency} '
+                                  ? '${L10n.t('Over by')} ${svc.baseCurrency} '
                                       '${fmt.format(h.spent - h.limit)}'
-                                  : '${fmt.format(h.spent)} of '
-                                      '${fmt.format(h.limit)} used',
+                                  : '${fmt.format(h.spent)} ${L10n.t('of')} '
+                                      '${fmt.format(h.limit)} ${L10n.t('used')}',
                               style: labelStyle(10,
                                   letterSpacing: 0.3,
                                   color: h.over
@@ -238,9 +246,11 @@ class _BudgetHistorySheet extends StatelessWidget {
   String _periodLabel(DateTime start, DateTime end) {
     switch (budget.period) {
       case BudgetPeriod.weekly:
-        return 'Week of ${DateFormat('MMM d').format(start)}';
+        return '${L10n.t('Week of')} ${DateFormat('MMM d', L10n.instance.isAmharic ? 'am' : null).format(start)}';
       case BudgetPeriod.monthly:
-        return DateFormat('MMMM yyyy').format(start);
+        return DateFormat('MMMM yyyy',
+                L10n.instance.isAmharic ? 'am' : null)
+            .format(start);
       case BudgetPeriod.yearly:
         return '${start.year}';
     }
@@ -266,14 +276,14 @@ class _EmptyState extends StatelessWidget {
               size: 48,
               color: MysticColors.onSurfaceVariant.withOpacity(0.3)),
           const SizedBox(height: 16),
-          Text('No budgets yet',
+          Text(L10n.t('No budgets yet'),
               style: headlineStyle(20,
                   italic: true,
                   weight: FontWeight.w700,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.5))),
           const SizedBox(height: 8),
           Text(
-            'Tap + New Budget to set a spending limit',
+            L10n.t('Tap + New Budget to set a spending limit'),
             textAlign: TextAlign.center,
             style: bodyStyle(13,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.5)),
@@ -378,7 +388,7 @@ class _BudgetCard extends StatelessWidget {
                 icon: Icon(Icons.history,
                     size: 20,
                     color: MysticColors.primary.withOpacity(0.7)),
-                tooltip: 'Budget history',
+                tooltip: L10n.t('Budget history'),
                 onPressed: onHistory,
               ),
               IconButton(
@@ -390,16 +400,18 @@ class _BudgetCard extends StatelessWidget {
                     context: context,
                     builder: (_) => AlertDialog(
                       backgroundColor: MysticColors.surfaceContainerLow,
-                      title: Text('Delete budget?',
+                      title: Text(L10n.t('Delete budget?'),
                           style: headlineStyle(18,
                               italic: true, weight: FontWeight.w700)),
                       content: Text(
-                          'Remove the ${budget.periodLabel.toLowerCase()} budget for ${budget.categoryLabel}?',
+                          '${L10n.t('Remove the')} '
+                          '${budget.periodLabel.toLowerCase()} '
+                          '${L10n.t('budget for')} ${budget.categoryLabel}?',
                           style: bodyStyle(14)),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: Text('Cancel',
+                          child: Text(L10n.t('Cancel'),
                               style: bodyStyle(14,
                                   color: MysticColors.onSurfaceVariant)),
                         ),
@@ -408,7 +420,7 @@ class _BudgetCard extends StatelessWidget {
                             Navigator.pop(context);
                             onDelete();
                           },
-                          child: Text('Delete',
+                          child: Text(L10n.t('Delete'),
                               style: bodyStyle(14,
                                   color: MysticColors.tertiary,
                                   weight: FontWeight.w700)),
@@ -430,7 +442,7 @@ class _BudgetCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('SPENT', style: labelStyle(8, letterSpacing: 1.2)),
+                  Text(L10n.t('SPENT'), style: labelStyle(8, letterSpacing: 1.2)),
                   const SizedBox(height: 2),
                   Text(
                     '$currency ${fmt.format(spent)}',
@@ -442,7 +454,7 @@ class _BudgetCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('BUDGET', style: labelStyle(8, letterSpacing: 1.2)),
+                  Text(L10n.t('BUDGET'), style: labelStyle(8, letterSpacing: 1.2)),
                   const SizedBox(height: 2),
                   Text(
                     '$currency ${fmt.format(budget.amount)}',
@@ -472,8 +484,10 @@ class _BudgetCard extends StatelessWidget {
           // Remaining / over label
           Text(
             overBudget
-                ? 'Over budget by $currency ${fmt.format(spent - budget.amount)}'
-                : '$currency ${fmt.format(remaining)} remaining',
+                ? '${L10n.t('Over budget by')} $currency '
+                    '${fmt.format(spent - budget.amount)}'
+                : '$currency ${fmt.format(remaining)} '
+                    '${L10n.t('remaining')}',
             style: bodyStyle(12,
                 color: overBudget
                     ? MysticColors.tertiary
@@ -532,9 +546,9 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
 
   String _periodLabel(BudgetPeriod p) {
     switch (p) {
-      case BudgetPeriod.weekly:  return 'Weekly';
-      case BudgetPeriod.monthly: return 'Monthly';
-      case BudgetPeriod.yearly:  return 'Yearly';
+      case BudgetPeriod.weekly:  return L10n.t('Weekly');
+      case BudgetPeriod.monthly: return L10n.t('Monthly');
+      case BudgetPeriod.yearly:  return L10n.t('Yearly');
     }
   }
 
@@ -542,7 +556,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', ''));
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid amount')),
+        SnackBar(content: Text(L10n.t('Enter a valid amount'))),
       );
       return;
     }
@@ -596,12 +610,14 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
               ),
             ),
 
-            Text(_isEdit ? 'Amend Budget Scroll' : 'New Budget Scroll',
+            Text(_isEdit
+                ? L10n.t('Amend Budget Scroll')
+                : L10n.t('New Budget Scroll'),
                 style: headlineStyle(24, italic: true, weight: FontWeight.w700)),
             const SizedBox(height: 28),
 
             // Period selector
-            Text('PERIOD',
+            Text(L10n.t('PERIOD'),
                 style: labelStyle(9,
                     letterSpacing: 1.5,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -634,7 +650,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
                             style: bodyStyle(13,
                                 weight: FontWeight.w600,
                                 color: selected
-                                    ? Colors.white
+                                    ? MysticColors.onPrimary
                                     : MysticColors.onSurface),
                           ),
                         ),
@@ -648,7 +664,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
             const SizedBox(height: 24),
 
             // Category selector
-            Text('CATEGORY',
+            Text(L10n.t('CATEGORY'),
                 style: labelStyle(9,
                     letterSpacing: 1.5,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -658,7 +674,7 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
               runSpacing: 8,
               children: [
                 _CatChip(
-                  label: 'Overall',
+                  label: L10n.t('Overall'),
                   selected: _category == null,
                   onTap: () => setState(() => _category = null),
                 ),
@@ -676,7 +692,8 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
             const SizedBox(height: 24),
 
             // Amount field
-            Text('BUDGET AMOUNT (${context.read<FinanceService>().baseCurrency})',
+            Text('${L10n.t('BUDGET AMOUNT')} '
+                '(${context.read<FinanceService>().baseCurrency})',
                 style: labelStyle(9,
                     letterSpacing: 1.5,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -734,17 +751,19 @@ class _AddBudgetSheetState extends State<_AddBudgetSheet> {
                   ),
                   child: Center(
                     child: _saving
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2),
+                                color: MysticColors.onPrimary, strokeWidth: 2),
                           )
-                        : Text(_isEdit ? 'Update Budget' : 'Inscribe Budget',
+                        : Text(_isEdit
+                            ? L10n.t('Update Budget')
+                            : L10n.t('Inscribe Budget'),
                             style: headlineStyle(18,
                                 italic: true,
                                 weight: FontWeight.w900,
-                                color: Colors.white)),
+                                color: MysticColors.onPrimary)),
                   ),
                 ),
               ),

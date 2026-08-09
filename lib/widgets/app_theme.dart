@@ -10,6 +10,13 @@ import 'package:google_fonts/google_fonts.dart';
 // screen reads `MysticColors.background` (etc.) directly, so a true dark mode
 // has to swap the values at runtime. [MysticColors.useDark] reassigns all of
 // them in one step and every existing screen follows along on the next build.
+//
+// IMPORTANT — repaint contract: because the palette (and [L10n.t] strings)
+// are statics read straight in build(), a widget only reflects a flip if its
+// Element actually rebuilds. Const-identical widget instances are skipped by
+// the framework, so every screen/shared widget that reads these statics must
+// register `Theme.of(context)` + `Localizations.localeOf(context)` in its
+// build (or be constructed non-const). New screens: add those two lines.
 class MysticColors {
   // Backgrounds & surfaces (parchment layers)
   static Color background              = const Color(0xFFFBFBE2);
@@ -53,6 +60,12 @@ class MysticColors {
   /// mode so dark screens never keep a white bar.
   static Color appBarBackground = const Color(0xFFFDFCF0);
 
+  /// Bottom navigation bar surface — parchment in light, charcoal in dark.
+  static Color navBackground = const Color(0xFFF5F4E8);
+
+  /// Inactive bottom-nav icon/label tint.
+  static Color navInactive = const Color(0xFF9E9B8A);
+
   /// Restores the parchment light palette.
   static void useLight() {
     background              = const Color(0xFFFBFBE2);
@@ -82,6 +95,8 @@ class MysticColors {
     error                   = const Color(0xFFBA1A1A);
     onError                 = const Color(0xFFFFFFFF);
     appBarBackground        = const Color(0xFFFDFCF0);
+    navBackground           = const Color(0xFFF5F4E8);
+    navInactive             = const Color(0xFF9E9B8A);
   }
 
   /// Switches to the deep-charcoal night palette.
@@ -113,6 +128,8 @@ class MysticColors {
     error                   = const Color(0xFFFFB4AB);
     onError                 = const Color(0xFF690005);
     appBarBackground        = const Color(0xFF232119);
+    navBackground           = const Color(0xFF232119);
+    navInactive             = const Color(0xFF8F8771);
   }
 }
 
@@ -135,11 +152,11 @@ ThemeData buildMysticTheme() {
       tertiary: MysticColors.tertiary,
       onTertiary: MysticColors.onTertiary,
       tertiaryContainer: MysticColors.tertiaryContainer,
-      onTertiaryContainer: Color(0xFF8A1519),
+      onTertiaryContainer: const Color(0xFF8A1519),
       error: MysticColors.error,
       onError: MysticColors.onError,
-      errorContainer: Color(0xFFFFDAD6),
-      onErrorContainer: Color(0xFF93000A),
+      errorContainer: const Color(0xFFFFDAD6),
+      onErrorContainer: const Color(0xFF93000A),
       surface: MysticColors.surface,
       onSurface: MysticColors.onSurface,
       onSurfaceVariant: MysticColors.onSurfaceVariant,
@@ -151,9 +168,9 @@ ThemeData buildMysticTheme() {
       background: MysticColors.background,
       // ignore: deprecated_member_use
       onBackground: MysticColors.onSurface,
-      inverseSurface: Color(0xFF303221),
-      onInverseSurface: Color(0xFFF2F2D9),
-      inversePrimary: Color(0xFFE9C349),
+      inverseSurface: const Color(0xFF303221),
+      onInverseSurface: const Color(0xFFF2F2D9),
+      inversePrimary: const Color(0xFFE9C349),
       surfaceTint: MysticColors.primary,
     ),
     scaffoldBackgroundColor: MysticColors.background,
@@ -214,11 +231,11 @@ ThemeData buildMysticDarkTheme() {
       tertiary: MysticColors.tertiary,
       onTertiary: MysticColors.onTertiary,
       tertiaryContainer: MysticColors.tertiaryContainer,
-      onTertiaryContainer: Color(0xFFFFB4AC),
+      onTertiaryContainer: const Color(0xFFFFB4AC),
       error: MysticColors.error,
       onError: MysticColors.onError,
-      errorContainer: Color(0xFF93000A),
-      onErrorContainer: Color(0xFFFFDAD6),
+      errorContainer: const Color(0xFF93000A),
+      onErrorContainer: const Color(0xFFFFDAD6),
       surface: MysticColors.surface,
       onSurface: MysticColors.onSurface,
       onSurfaceVariant: MysticColors.onSurfaceVariant,
@@ -230,9 +247,9 @@ ThemeData buildMysticDarkTheme() {
       background: MysticColors.background,
       // ignore: deprecated_member_use
       onBackground: MysticColors.onSurface,
-      inverseSurface: Color(0xFFEDE9D8),
-      onInverseSurface: Color(0xFF303221),
-      inversePrimary: Color(0xFF735C00),
+      inverseSurface: const Color(0xFFEDE9D8),
+      onInverseSurface: const Color(0xFF303221),
+      inversePrimary: const Color(0xFF735C00),
       surfaceTint: MysticColors.primary,
     ),
     scaffoldBackgroundColor: MysticColors.background,
@@ -256,6 +273,11 @@ ThemeData buildMysticDarkTheme() {
 //  Convenience style helpers
 //  Used throughout screens so font decisions stay in one place.
 // ─────────────────────────────────────────────
+
+/// Readable text colour for a surface that varies between modes (snackbar
+/// backgrounds, badges). Dark text on light surfaces, white on dark ones.
+Color readableOn(Color background) =>
+    background.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
 
 /// Epilogue — for all titles, headings, hero numbers
 TextStyle headlineStyle(

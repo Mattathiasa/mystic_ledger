@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
+import '../services/l10n.dart';
 import '../models/transaction.dart';
 
 /// Categorical palette for charts.
@@ -74,8 +75,8 @@ class _InsightsScreenState extends State<InsightsScreen> {
       firstDate: DateTime(now.year - 5),
       lastDate: now,
       initialDateRange: _customRange ?? DateTimeRange(start: now.subtract(const Duration(days: 30)), end: now),
-      helpText: 'Select a custom period',
-      saveText: 'Apply',
+      helpText: L10n.t('Select a custom period'),
+      saveText: L10n.t('Apply'),
     );
     if (picked == null) return;
     setState(() {
@@ -86,6 +87,11 @@ class _InsightsScreenState extends State<InsightsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: const MysticAppBar(),
@@ -106,13 +112,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('OBSERVATIONS',
+                Text(L10n.t('OBSERVATIONS'),
                     style: labelStyle(10,
                         letterSpacing: 2.0,
                         color:
                             MysticColors.onSurfaceVariant.withOpacity(0.7))),
                 const SizedBox(height: 8),
-                Text('Insights',
+                Text(L10n.t('Insights'),
                     style:
                         headlineStyle(48, italic: true, weight: FontWeight.w900)),
                 const SizedBox(height: 20),
@@ -130,10 +136,11 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 const SizedBox(height: 24),
 
                 if (!hasAnything)
-                  const _EmptyState(
+                  _EmptyState(
                     icon: Icons.insights_outlined,
-                    message: 'No entries yet.\n'
-                        'Add income or an expense and your reports appear here.',
+                    message: L10n.t('No entries yet.\n'
+                        'Add income or an expense and your reports appear '
+                        'here.'),
                   )
                 else ...[
                   _SummaryGrid(svc: svc, range: _range),
@@ -187,13 +194,13 @@ class _PeriodSelector extends StatelessWidget {
     required this.onCustom,
   });
 
-  static const _short = {
-    LedgerPeriod.week:      'Week',
-    LedgerPeriod.month:     'Month',
-    LedgerPeriod.sixMonths: '6 Months',
-    LedgerPeriod.year:      'Year',
-    LedgerPeriod.all:       'All',
-  };
+  static Map<LedgerPeriod, String> get _short => {
+        LedgerPeriod.week:      L10n.t('Week'),
+        LedgerPeriod.month:     L10n.t('Month'),
+        LedgerPeriod.sixMonths: L10n.t('6 Months'),
+        LedgerPeriod.year:      L10n.t('Year'),
+        LedgerPeriod.all:       L10n.t('All'),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -264,7 +271,9 @@ class _PeriodSelector extends StatelessWidget {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    customRange != null ? 'Custom' : 'Custom…',
+                    customRange != null
+                        ? L10n.t('Custom')
+                        : L10n.t('Custom…'),
                     style: labelStyle(10,
                         letterSpacing: 1.0,
                         color: customRange != null
@@ -304,7 +313,7 @@ class _SummaryGrid extends StatelessWidget {
           children: [
             Expanded(
               child: _StatTile(
-                label: 'INCOME',
+                label: L10n.t('INCOME'),
                 value: _money(cur, income),
                 mark: ChartPalette.green,
               ),
@@ -312,7 +321,7 @@ class _SummaryGrid extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _StatTile(
-                label: 'EXPENSES',
+                label: L10n.t('EXPENSES'),
                 value: _money(cur, expenses),
                 mark: ChartPalette.red,
               ),
@@ -324,7 +333,7 @@ class _SummaryGrid extends StatelessWidget {
           children: [
             Expanded(
               child: _StatTile(
-                label: 'NET',
+                label: L10n.t('NET'),
                 value: _money(cur, net),
                 mark: net >= 0 ? ChartPalette.green : ChartPalette.red,
                 emphasise: true,
@@ -333,7 +342,7 @@ class _SummaryGrid extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _StatTile(
-                label: 'FEES PAID',
+                label: L10n.t('FEES PAID'),
                 value: _money(cur, fees),
                 mark: ChartPalette.orange,
               ),
@@ -432,14 +441,14 @@ class _TrendChart extends StatelessWidget {
 
     return _ChartCard(
       icon: Icons.bar_chart_rounded,
-      title: 'Income vs Expenses',
+      title: L10n.t('Income vs Expenses'),
       subtitle: label,
-      legend: const [
-        _LegendDot(color: ChartPalette.green, label: 'Income'),
-        _LegendDot(color: ChartPalette.red, label: 'Expenses'),
+      legend: [
+        _LegendDot(color: ChartPalette.green, label: L10n.t('Income')),
+        _LegendDot(color: ChartPalette.red, label: L10n.t('Expenses')),
       ],
       child: maxV == 0
-          ? const _InlineEmpty(message: 'Nothing recorded in this period.')
+          ? _InlineEmpty(message: L10n.t('Nothing recorded in this period.'))
           : SizedBox(
               height: 190,
               child: BarChart(
@@ -516,7 +525,8 @@ class _TrendChart extends StatelessWidget {
                       tooltipRoundedRadius: 10,
                       getTooltipItem: (group, _, rod, rodIdx) {
                         final b = buckets[group.x];
-                        final label = rodIdx == 0 ? 'Income' : 'Expenses';
+                        final label =
+                            rodIdx == 0 ? L10n.t('Income') : L10n.t('Expenses');
                         return BarTooltipItem(
                           '${b.label} · $label\n'
                           '${_money(svc.baseCurrency, rod.toY)}',
@@ -581,11 +591,12 @@ class _BalanceLine extends StatelessWidget {
 
     return _ChartCard(
       icon: Icons.show_chart_rounded,
-      title: 'Running Balance',
-      subtitle: 'Cumulative net position · $label',
+      title: L10n.t('Running Balance'),
+      subtitle: '${L10n.t('Cumulative net position')} · $label',
       child: series.length < 2
-          ? const _InlineEmpty(
-              message: 'At least two entries are needed to draw a trend.')
+          ? _InlineEmpty(
+              message:
+                  L10n.t('At least two entries are needed to draw a trend.'))
           : SizedBox(
               height: 180,
               child: LineChart(
@@ -649,7 +660,7 @@ class _BalanceLine extends StatelessWidget {
                       getTooltipItems: (spots) => spots.map((s) {
                         final p = series[s.x.toInt()];
                         return LineTooltipItem(
-                          '${DateFormat('MMM d').format(p.date)}\n'
+                          '${L10n.date(p.date, 'MMM d')}\n'
                           '${_money(svc.baseCurrency, p.value)}',
                           bodyStyle(12,
                               weight: FontWeight.w600,
@@ -693,10 +704,10 @@ class _CategoryDonutState extends State<_CategoryDonut> {
 
     return _ChartCard(
       icon: Icons.donut_large_rounded,
-      title: 'Spending by Category',
-      subtitle: 'Tap a slice to see the entries',
+      title: L10n.t('Spending by Category'),
+      subtitle: L10n.t('Tap a slice to see the entries'),
       child: sorted.isEmpty
-          ? const _InlineEmpty(message: 'No expenses in this period.')
+          ? _InlineEmpty(message: L10n.t('No expenses in this period.'))
           : Column(
               children: [
                 Row(
@@ -799,7 +810,7 @@ class _CategoryDonutState extends State<_CategoryDonut> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('TOTAL',
+                    Text(L10n.t('TOTAL'),
                         style: labelStyle(10,
                             letterSpacing: 1.5,
                             color: MysticColors.onSurfaceVariant
@@ -904,7 +915,7 @@ class _DrilldownSheet extends StatelessWidget {
             ),
             Expanded(
               child: entries.isEmpty
-                  ? const Center(child: _InlineEmpty(message: 'No entries.'))
+                  ? Center(child: _InlineEmpty(message: L10n.t('No entries.')))
                   : ListView.separated(
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
@@ -923,12 +934,14 @@ class _DrilldownSheet extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    t.title.isEmpty ? 'Untitled' : t.title,
+                                    t.title.isEmpty
+                                        ? L10n.t('Untitled')
+                                        : t.title,
                                     style: bodyStyle(14,
                                         weight: FontWeight.w600),
                                   ),
                                   Text(
-                                    '${DateFormat('MMM d, yyyy').format(t.date)}'
+                                    '${L10n.date(t.date, 'MMM d, yyyy')}'
                                     '${account == null ? '' : ' · $account'}',
                                     style: labelStyle(9,
                                         letterSpacing: 0.3,
@@ -947,7 +960,8 @@ class _DrilldownSheet extends StatelessWidget {
                                         weight: FontWeight.w700)),
                                 if (t.fee > 0)
                                   Text(
-                                    '+ fee ${NumberFormat('#,##0.00').format(t.fee)}',
+                                    '+ ${L10n.t('fee')} '
+                                    '${NumberFormat('#,##0.00').format(t.fee)}',
                                     style: labelStyle(9,
                                         letterSpacing: 0.3,
                                         color: ChartPalette.orange),
@@ -983,8 +997,8 @@ class _FeesCard extends StatelessWidget {
 
     return _ChartCard(
       icon: Icons.percent_rounded,
-      title: 'Lost to Fees',
-      subtitle: 'Bank and service charges · $label',
+      title: L10n.t('Lost to Fees'),
+      subtitle: '${L10n.t('Bank and service charges')} · $label',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1006,9 +1020,10 @@ class _FeesCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             fees == 0
-                ? 'No fees recorded in this period.'
-                : '${(share * 100).toStringAsFixed(1)}% of everything you spent '
-                    'went to charges rather than to what you bought.',
+                ? L10n.t('No fees recorded in this period.')
+                : '${(share * 100).toStringAsFixed(1)}% '
+                    '${L10n.t('of everything you spent went to charges rather '
+                        'than to what you bought.')}',
             style: bodyStyle(12, color: MysticColors.onSurfaceVariant),
           ),
         ],
@@ -1038,10 +1053,14 @@ class _AccountDistribution extends StatelessWidget {
 
     return _ChartCard(
       icon: Icons.account_balance_wallet_outlined,
-      title: 'Where Your Money Sits',
-      subtitle: 'Converted to ${svc.baseCurrency}',
+      title: L10n.t('Where Your Money Sits'),
+      subtitle: '${L10n.t('Converted to')} ${svc.baseCurrency}',
       child: shares.isEmpty
-          ? const _InlineEmpty(message: 'No account holds a balance yet.')
+          ? _InlineEmpty(
+              message: svc.hasSavingsAccount
+                  ? L10n.t('Spendable accounts hold nothing — '
+                      'savings vaults are on the Savings screen.')
+                  : L10n.t('No account holds a balance yet.'))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1102,7 +1121,7 @@ class _AccountDistribution extends StatelessWidget {
                       height: 1,
                       color: MysticColors.outlineVariant.withOpacity(0.2)),
                   const SizedBox(height: 10),
-                  Text('HOLDINGS BY CURRENCY',
+                  Text(L10n.t('HOLDINGS BY CURRENCY'),
                       style: labelStyle(9,
                           letterSpacing: 1.5,
                           color: MysticColors.onSurfaceVariant

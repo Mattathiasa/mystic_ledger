@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/finance_service.dart';
 import '../services/user_service.dart';
+import '../services/l10n.dart';
 import '../models/user_model.dart';
 import '../widgets/app_theme.dart';
 import '../screens/profile_screen.dart';
@@ -22,6 +23,11 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final auth    = AuthService();
     final uid     = auth.currentUser?.uid ?? '';
     final svc     = context.watch<FinanceService>();
@@ -60,35 +66,35 @@ class AppDrawer extends StatelessWidget {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   children: [
-                    const _SectionLabel('FINANCIAL TOOLS'),
+                    _SectionLabel(L10n.t('FINANCIAL TOOLS')),
                     _DrawerTile(
                       icon: Icons.swap_horiz_rounded,
-                      label: 'Transfer Funds',
+                      label: L10n.t('Transfer Funds'),
                       onTap: () => _push(context, const TransferScreen()),
                     ),
                     _DrawerTile(
                       icon: Icons.savings_outlined,
-                      label: 'Savings Vault',
+                      label: L10n.t('Savings Vault'),
                       onTap: () => _push(context, const SavingsScreen()),
                     ),
                     _DrawerTile(
                       icon: Icons.handshake_outlined,
-                      label: 'Debt Ledger',
+                      label: L10n.t('Debt Ledger'),
                       onTap: () => _push(context, const DebtScreen()),
                     ),
                     _DrawerTile(
                       icon: Icons.add_card_outlined,
-                      label: 'Add Account',
+                      label: L10n.t('Add Account'),
                       onTap: () => _push(context, const AddAccountScreen()),
                     ),
                     _DrawerTile(
                       icon: Icons.assignment_outlined,
-                      label: 'Budget Scrolls',
+                      label: L10n.t('Budget Scrolls'),
                       onTap: () => _push(context, const BudgetScreen()),
                     ),
                     _DrawerTile(
                       icon: Icons.repeat,
-                      label: 'Recurring',
+                      label: L10n.t('Recurring'),
                       onTap: () => _push(context, const RecurringScreen()),
                     ),
 
@@ -96,10 +102,10 @@ class AppDrawer extends StatelessWidget {
                     _Divider(),
                     const SizedBox(height: 8),
 
-                    const _SectionLabel('SETTINGS'),
+                    _SectionLabel(L10n.t('SETTINGS')),
                     _DrawerTile(
                       icon: Icons.account_circle_outlined,
-                      label: 'My Profile',
+                      label: L10n.t('My Profile'),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -110,7 +116,7 @@ class AppDrawer extends StatelessWidget {
                     ),
                     _DrawerTile(
                       icon: Icons.currency_exchange,
-                      label: 'Currency & rates',
+                      label: L10n.t('Currency & rates'),
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
@@ -140,7 +146,7 @@ class AppDrawer extends StatelessWidget {
                     // Sign out
                     _DrawerTile(
                       icon: Icons.logout,
-                      label: 'Sign Out',
+                      label: L10n.t('Sign Out'),
                       labelColor: MysticColors.tertiary,
                       iconColor: MysticColors.tertiary,
                       onTap: () async {
@@ -161,7 +167,7 @@ class AppDrawer extends StatelessWidget {
                         size: 14, color: MysticColors.primaryContainer),
                     const SizedBox(width: 8),
                     Text(
-                      "Mystic Ledger  v1.0.0  ·  The Archivist's Grimoire",
+                      L10n.t("Mystic Ledger  v1.0.0  ·  The Archivist's Grimoire"),
                       style: labelStyle(8,
                           letterSpacing: 0.8,
                           color: MysticColors.onSurfaceVariant.withOpacity(0.4)),
@@ -260,7 +266,7 @@ class _DrawerHeader extends StatelessWidget {
                       color: MysticColors.primaryContainer),
                 ),
                 const SizedBox(width: 6),
-                Text('total balance',
+                Text(L10n.t('total balance'),
                     style: bodyStyle(11,
                         color: Colors.white.withOpacity(0.4))),
               ],

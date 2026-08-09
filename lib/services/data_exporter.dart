@@ -5,6 +5,7 @@ import '../models/transaction.dart';
 import '../models/transfer_model.dart';
 import '../models/debt_model.dart';
 import '../models/budget_model.dart';
+import '../models/recurring_transaction.dart';
 import 'finance_service.dart';
 
 /// Exports the user's data to a CSV file and shares it (share sheet on
@@ -24,7 +25,7 @@ class DataExporter {
       List<Transaction> transactions, Map<String, String> accountNames) {
     final rows = <List<String>>[
       ['id', 'title', 'type', 'category', 'amount', 'currency', 'fee', 'account',
-       'date', 'note', 'rateToBase'],
+       'date', 'note', 'rateToBase', 'tags', 'splits'],
     ];
     for (final t in transactions) {
       rows.add([
@@ -39,6 +40,10 @@ class DataExporter {
         t.date.toIso8601String(),
         _escape(t.note),
         t.rateToBase.toString(),
+        // JSON-encoded so any character a tag or note may hold survives the
+        // round-trip; the CSV layer handles quoting.
+        jsonEncode(t.tags),
+        jsonEncode(t.splits.map((s) => s.toMap()).toList()),
       ]);
     }
     return rows;
@@ -104,6 +109,30 @@ class DataExporter {
     return rows;
   }
 
+  static List<List<String>> _recurringRows(
+      List<RecurringTransaction> recurring, Map<String, String> accountNames) {
+    final rows = <List<String>>[
+      ['id', 'title', 'amount', 'type', 'category', 'account', 'currency',
+       'frequency', 'nextDue', 'note', 'isActive'],
+    ];
+    for (final r in recurring) {
+      rows.add([
+        _escape(r.id),
+        _escape(r.title),
+        r.amount.toStringAsFixed(2),
+        r.type.name,
+        r.category.name,
+        _escape(accountNames[r.accountId] ?? r.accountId),
+        r.currency,
+        r.frequency.name,
+        r.nextDue.toIso8601String(),
+        _escape(r.note),
+        r.isActive.toString(),
+      ]);
+    }
+    return rows;
+  }
+
   /// Builds one CSV document containing all sections, each with its own
   /// header. Returns the CSV as a string.
   static String buildCsv(FinanceService svc) {
@@ -116,13 +145,17 @@ class DataExporter {
       'TRANSFERS\n${_encode(_transfersRows(svc.transfers, accountNames))}',
       'DEBTS\n${_encode(_debtsRows(svc.debts))}',
       'BUDGETS\n${_encode(_budgetsRows(svc.budgets))}',
+      'RECURRING\n${_encode(_recurringRows(svc.recurring, accountNames))}',
     ];
 
     return sections.join('\n\n');
   }
 
+  // eol must be explicit: csv 6.x defaults to \r\n, and the importer
+  // normalises to \n — keeping exports on the same line endings avoids
+  // surprises in spreadsheets and editors.
   static String _encode(List<List<String>> rows) =>
-      const ListToCsvConverter().convert(rows);
+      const ListToCsvConverter(eol: '\n').convert(rows);
 
   /// Shares the exported CSV. On the web, `Share.shareXFiles` with a byte
   /// source falls back to a browser download; on mobile the share sheet

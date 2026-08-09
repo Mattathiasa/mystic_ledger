@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/account_model.dart';
 import '../models/currency_model.dart';
 import '../services/finance_service.dart';
 import '../services/onboarding_service.dart';
 import '../services/sms_capture_service.dart';
+import '../services/l10n.dart';
 import '../widgets/app_theme.dart';
 
 /// One-time wizard shown after first sign-up, before MainScaffold.
@@ -106,8 +106,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not save. Check your connection and try again.',
-              style: bodyStyle(13, color: Colors.white)),
+          content: Text(
+              L10n.t('Could not save. Check your connection and try again.'),
+              style: bodyStyle(13, color: MysticColors.onTertiary)),
           backgroundColor: MysticColors.tertiary,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -122,6 +123,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       body: SafeArea(
@@ -200,10 +206,11 @@ class _Header extends StatelessWidget {
         Icon(Icons.auto_awesome,
             size: 34, color: MysticColors.primary.withOpacity(0.7)),
         const SizedBox(height: 14),
-        Text('First Steps', style: headlineStyle(36, italic: true, weight: FontWeight.w900),
+        Text(L10n.t('First Steps'),
+            style: headlineStyle(36, italic: true, weight: FontWeight.w900),
             textAlign: TextAlign.center),
         const SizedBox(height: 6),
-        Text('SET UP YOUR LEDGER',
+        Text(L10n.t('SET UP YOUR LEDGER'),
             style: labelStyle(11,
                 letterSpacing: 2.0,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
@@ -253,12 +260,12 @@ class _CurrencyStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Base Currency',
+        Text(L10n.t('Base Currency'),
             style: headlineStyle(24, italic: true, weight: FontWeight.w800)),
         const SizedBox(height: 8),
         Text(
-          'Every total and report is shown in this currency. You can still '
-          'hold money in others and convert between them.',
+          L10n.t('Every total and report is shown in this currency. You can '
+              'still hold money in others and convert between them.'),
           style: bodyStyle(14, color: MysticColors.onSurfaceVariant),
         ),
         const SizedBox(height: 24),
@@ -333,12 +340,12 @@ class _AccountStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Your First Account',
+        Text(L10n.t('Your First Account'),
             style: headlineStyle(24, italic: true, weight: FontWeight.w800)),
         const SizedBox(height: 8),
         Text(
-          'Where does your money live? A bank, mobile money, or cash in hand. '
-          'You can add more vaults later.',
+          L10n.t('Where does your money live? A bank, mobile money, or cash '
+              'in hand. You can add more vaults later.'),
           style: bodyStyle(14, color: MysticColors.onSurfaceVariant),
         ),
         const SizedBox(height: 24),
@@ -348,7 +355,7 @@ class _AccountStep extends StatelessWidget {
           textCapitalization: TextCapitalization.words,
           style: bodyStyle(16, weight: FontWeight.w600),
           decoration: InputDecoration(
-            hintText: 'e.g. CBE Bank, Telebirr, Cash',
+            hintText: L10n.t('e.g. CBE Bank, Telebirr, Cash'),
             hintStyle: bodyStyle(16)
                 .copyWith(color: MysticColors.onSurface.withOpacity(0.25)),
             contentPadding: const EdgeInsets.only(bottom: 8),
@@ -424,10 +431,10 @@ class _AccountStep extends StatelessWidget {
 
   static String _accountTypeLabel(AccountType t) {
     switch (t) {
-      case AccountType.bank:    return 'Bank';
-      case AccountType.mobile:  return 'Mobile Money';
-      case AccountType.cash:    return 'Cash';
-      case AccountType.savings: return 'Savings Vault';
+      case AccountType.bank:    return L10n.t('Bank');
+      case AccountType.mobile:  return L10n.t('Mobile Money');
+      case AccountType.cash:    return L10n.t('Cash');
+      case AccountType.savings: return L10n.t('Savings Vault');
     }
   }
 }
@@ -452,12 +459,12 @@ class _SmsStep extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('You are ready',
+          Text(L10n.t('You are ready'),
               style: headlineStyle(24, italic: true, weight: FontWeight.w800)),
           const SizedBox(height: 8),
           Text(
-            'Your ledger is open. Add entries, set a giving rate, and seal '
-            'your first savings vault whenever you are ready.',
+            L10n.t('Your ledger is open. Add entries, set a giving rate, and '
+                'seal your first savings vault whenever you are ready.'),
             style: bodyStyle(14, color: MysticColors.onSurfaceVariant),
           ),
         ],
@@ -467,14 +474,14 @@ class _SmsStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Auto-capture bank alerts',
+        Text(L10n.t('Auto-capture bank alerts'),
             style: headlineStyle(24, italic: true, weight: FontWeight.w800)),
         const SizedBox(height: 8),
         Text(
-          'On Android, Mystic Ledger can watch for Telebirr and CBE alerts in '
-          'your messages and turn them into reviewable draft entries. You '
-          'approve each one before it enters the ledger — nothing is recorded '
-          'automatically.',
+          L10n.t('On Android, Mystic Ledger can watch for Telebirr, CBE and '
+              'Awash alerts in your messages and turn them into reviewable '
+              'draft entries. You approve each one before it enters the '
+              'ledger — nothing is recorded automatically.'),
           style: bodyStyle(14, color: MysticColors.onSurfaceVariant),
         ),
         const SizedBox(height: 24),
@@ -505,10 +512,10 @@ class _SmsStep extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Enable SMS capture',
+                      Text(L10n.t('Enable SMS capture'),
                           style: bodyStyle(15, weight: FontWeight.w700)),
                       Text(
-                        'Permission is asked before anything is read.',
+                        L10n.t('Permission is asked before anything is read.'),
                         style: bodyStyle(12,
                             color: MysticColors.onSurfaceVariant),
                       ),
@@ -569,7 +576,7 @@ class _Footer extends StatelessWidget {
             if (onBack != null) ...[
               TextButton(
                 onPressed: onBack,
-                child: Text('Back',
+                child: Text(L10n.t('Back'),
                     style:
                         bodyStyle(14, color: MysticColors.onSurfaceVariant)),
               ),
@@ -588,14 +595,16 @@ class _Footer extends StatelessWidget {
                   ),
                   child: Center(
                     child: saving || smsBusy
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2),
+                                color: MysticColors.onPrimary, strokeWidth: 2),
                           )
                         : Text(
-                            isLast ? 'Open the Ledger' : 'Continue',
+                            isLast
+                                ? L10n.t('Open the Ledger')
+                                : L10n.t('Continue'),
                             style: headlineStyle(17,
                                 italic: true,
                                 weight: FontWeight.w900,

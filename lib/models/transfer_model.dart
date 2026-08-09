@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../services/l10n.dart';
 import 'currency_model.dart';
 
 /// What the transfer was *for*.
@@ -152,13 +153,13 @@ class Transfer {
 extension TransferCategoryDisplay on TransferCategory {
   String get label {
     switch (this) {
-      case TransferCategory.supermarket:   return 'Supermarket';
-      case TransferCategory.bills:         return 'Bills & Utilities';
-      case TransferCategory.familyFriends: return 'Family & Friends';
-      case TransferCategory.business:      return 'Business';
-      case TransferCategory.savings:       return 'Savings';
-      case TransferCategory.fees:          return 'Fees & Charges';
-      case TransferCategory.other:         return 'Other';
+      case TransferCategory.supermarket:   return L10n.t('Supermarket');
+      case TransferCategory.bills:         return L10n.t('Bills & Utilities');
+      case TransferCategory.familyFriends: return L10n.t('Family & Friends');
+      case TransferCategory.business:      return L10n.t('Business');
+      case TransferCategory.savings:       return L10n.t('Savings');
+      case TransferCategory.fees:          return L10n.t('Fees & Charges');
+      case TransferCategory.other:         return L10n.t('Other');
     }
   }
 

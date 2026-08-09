@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/l10n.dart';
 import '../widgets/app_theme.dart';
 import '../main.dart';
 
@@ -10,6 +11,11 @@ class SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       body: Stack(
@@ -32,9 +38,13 @@ class SplashScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const _JournalCover(),
+                  // Non-const on purpose: must rebuild on theme/locale change.
+                  // ignore: prefer_const_constructors
+                  _JournalCover(),
                   const SizedBox(height: 48),
-                  const _TitleSection(),
+                  // Non-const on purpose: must rebuild on theme/locale change.
+                  // ignore: prefer_const_constructors
+                  _TitleSection(),
                   const SizedBox(height: 56),
                   _OpenButton(
                     onTap: () => Navigator.of(context).pushReplacement(
@@ -47,7 +57,9 @@ class SplashScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const _MetaRow(),
+                  // Non-const on purpose: must rebuild on theme/locale change.
+                  // ignore: prefer_const_constructors
+                  _MetaRow(),
                 ],
               ),
             ),
@@ -186,7 +198,7 @@ class _TitleSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'TRACK YOUR MONEY LIKE A STORY',
+          L10n.t('TRACK YOUR MONEY LIKE A STORY'),
           style: labelStyle(11,
               letterSpacing: 2.5, color: MysticColors.outline),
         ),
@@ -206,7 +218,7 @@ class _OpenButton extends StatelessWidget {
       child: ElevatedButton.icon(
         onPressed: onTap,
         icon: const Icon(Icons.history_edu_outlined),
-        label: const Text('Open the Journal'),
+        label: Text(L10n.t('Open the Journal')),
         style: ElevatedButton.styleFrom(
           backgroundColor: MysticColors.primary,
           foregroundColor: MysticColors.onPrimary,
@@ -248,7 +260,7 @@ class _MetaRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        Text("The Archivist's Grimoire", style: style),
+        Text(L10n.t("The Archivist's Grimoire"), style: style),
       ],
     );
   }

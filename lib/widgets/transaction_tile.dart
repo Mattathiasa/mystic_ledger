@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction.dart';
+import '../services/l10n.dart';
 import 'app_theme.dart';
 
 /// A single transaction row used in both the Journal dashboard
@@ -24,19 +25,24 @@ class TransactionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final isIncome = transaction.type == TransactionType.income;
     final amtFmt   = NumberFormat('#,##0.00');
-    final timeFmt  = DateFormat('h:mm a');
-    final dateFmt  = DateFormat('MMM d');
+    final timeFmt  = DateFormat('h:mm a',
+        L10n.instance.isAmharic ? 'am' : null);
 
     final diff = DateTime.now().difference(transaction.date);
     final String timeLabel;
     if (diff.inHours < 24) {
       timeLabel = timeFmt.format(transaction.date);
     } else if (diff.inDays < 2) {
-      timeLabel = 'Yesterday · ${timeFmt.format(transaction.date)}';
+      timeLabel = '${L10n.t('Yesterday')} · ${timeFmt.format(transaction.date)}';
     } else {
-      timeLabel = '${dateFmt.format(transaction.date)} · ${timeFmt.format(transaction.date)}';
+      timeLabel = '${L10n.date(transaction.date, 'MMM d')} · ${timeFmt.format(transaction.date)}';
     }
 
     // Use provided name or fall back to the accountId (e.g. 'cash', 'cbe')
@@ -70,7 +76,7 @@ class TransactionTile extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.5),
+              color: MysticColors.primaryContainer.withOpacity(0.14),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(

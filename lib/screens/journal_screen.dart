@@ -7,6 +7,7 @@ import '../widgets/transaction_tile.dart';
 import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
 import '../services/sms_capture_service.dart';
+import '../services/l10n.dart';
 import '../models/account_model.dart';
 import 'main_scaffold.dart';
 import 'new_entry_screen.dart';
@@ -36,6 +37,11 @@ class JournalScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: const MysticAppBar(),
@@ -53,7 +59,9 @@ class JournalScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _CaptureBanner(),
+                    // Non-const on purpose: must rebuild on theme/locale change.
+                    // ignore: prefer_const_constructors
+                    _CaptureBanner(),
                     _BalanceHero(svc: svc),
                     const SizedBox(height: 40),
                     _AccountSection(svc: svc),
@@ -125,14 +133,15 @@ class _CaptureBanner extends StatelessWidget {
                       children: [
                         Text(
                           count == 1
-                              ? 'A transaction waits to be recorded'
-                              : '$count transactions wait to be recorded',
+                              ? L10n.t('A transaction waits to be recorded')
+                              : '$count ${L10n.t('transactions wait to be recorded')}',
                           style: headlineStyle(15,
                               italic: false, weight: FontWeight.w700),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Captured from Telebirr & CBE — review before they enter the ledger',
+                          L10n.t('Captured from Telebirr, CBE & Awash — review '
+                              'before they enter the ledger'),
                           style: bodyStyle(12,
                               color: MysticColors.onSurfaceVariant
                                   .withOpacity(0.75)),
@@ -169,18 +178,22 @@ class _BalanceHero extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'CURRENT OBSERVATIONS',
+              L10n.t('CURRENT OBSERVATIONS'),
               style: labelStyle(10,
                   letterSpacing: 2.0,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
             ),
-            // Tap masks the total only; long-press masks everything at once.
+            // Hiding masks the total AND every account at once; each account
+            // card's own eye reveals that one balance alone.
             Tooltip(
-              message: 'Tap: hide total · Hold: hide everything',
+              message: L10n.t('Tap to hide or show every amount — each '
+                  'account\'s eye reveals it alone.'),
               child: GestureDetector(
-                onTap: () => svc.toggleTotalVisibility(),
-                onLongPress: () =>
-                    svc.allHidden ? svc.showAll() : svc.hideAll(),
+                // Hiding masks everything; a tap while the total is still
+                // hidden restores all of it in one go (accounts revealed
+                // individually stay revealed until then).
+                onTap: () =>
+                    svc.totalHidden ? svc.showAll() : svc.hideAll(),
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.all(4),
@@ -197,7 +210,7 @@ class _BalanceHero extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text('My Ledger',
+        Text(L10n.t('My Ledger'),
             style: headlineStyle(48, italic: true, weight: FontWeight.w900)),
         const SizedBox(height: 16),
         Stack(
@@ -248,7 +261,8 @@ class _BalanceHero extends StatelessWidget {
             ),
           ),
           child: Text(
-            '"The ledger reflects what the season has given, and what it has taken."',
+            L10n.t('"The ledger reflects what the season has given, and what '
+                'it has taken."'),
             style: bodyStyle(13, color: MysticColors.onSurfaceVariant)
                 .copyWith(fontStyle: FontStyle.italic),
           ),
@@ -317,10 +331,11 @@ class _AccountSection extends StatelessWidget {
     // this is the app's front door, not a rare edge case. A blank gap here
     // leaves a new user with nowhere to go.
     if (cards.isEmpty) {
-      return const NoAccountsCard(
-        headline: 'No vaults yet',
-        body: 'Add the accounts you actually keep money in — a bank, mobile '
-            'money, cash in hand — and the ledger fills itself from there.',
+      return NoAccountsCard(
+        headline: L10n.t('No vaults yet'),
+        body: L10n.t('Add the accounts you actually keep money in — a bank, '
+            'mobile money, cash in hand — and the ledger fills itself from '
+            'there.'),
       );
     }
 
@@ -478,14 +493,14 @@ class _RecentSection extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text('Recent Entries',
+            Text(L10n.t('Recent Entries'),
                 style:
                     headlineStyle(28, italic: true, weight: FontWeight.w700)),
             TextButton(
               onPressed: () =>
                   MainShell.maybeOf(context)?.goToTab(MainScaffold.tabLedger),
               child: Text(
-                'VIEW ARCHIVES',
+                L10n.t('VIEW ARCHIVES'),
                 style:
                     labelStyle(10, letterSpacing: 1.5, color: MysticColors.primary),
               ),
@@ -503,7 +518,7 @@ class _RecentSection extends StatelessWidget {
                       size: 56, color: MysticColors.outlineVariant),
                   const SizedBox(height: 12),
                   Text(
-                    'Your ledger awaits its first entry',
+                    L10n.t('Your ledger awaits its first entry'),
                     style: headlineStyle(15,
                         italic: true,
                         weight: FontWeight.w600,
@@ -563,7 +578,7 @@ class _AddFab extends StatelessWidget {
           children: [
             Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
             const SizedBox(width: 8),
-            Text('ADD ENTRY',
+            Text(L10n.t('ADD ENTRY'),
                 style:
                     labelStyle(11, letterSpacing: 1.5, color: MysticColors.onPrimary)),
           ],

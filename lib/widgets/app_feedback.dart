@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import '../services/l10n.dart';
 import 'app_theme.dart';
 
 /// Shared success/error feedback.
@@ -27,7 +28,8 @@ void _show(ScaffoldMessengerState? messenger, String message, Color background) 
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text(message, style: bodyStyle(13, color: Colors.white)),
+        content:
+            Text(message, style: bodyStyle(13, color: readableOn(background))),
         backgroundColor: background,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 4),
@@ -45,20 +47,21 @@ String friendlyWriteError(Object error) {
   if (error is FirebaseException) {
     switch (error.code) {
       case 'permission-denied':
-        return 'That save was rejected. Try signing out and back in.';
+        return L10n.t('That save was rejected. Try signing out and back in.');
       case 'unauthenticated':
-        return 'Your session expired. Please sign in again.';
+        return L10n.t('Your session expired. Please sign in again.');
       case 'resource-exhausted':
-        return 'The archive is temporarily overloaded. Please try again in a '
-            'moment.';
+        return L10n.t('The archive is temporarily overloaded. Please try again '
+            'in a moment.');
       case 'not-found':
-        return 'That record no longer exists.';
+        return L10n.t('That record no longer exists.');
       default:
-        return 'Could not save (${error.code}). Please try again.';
+        return '${L10n.t('Could not save')} (${error.code}). '
+            '${L10n.t('Please try again.')}';
     }
   }
   if (error is StateError) return error.message;
-  return 'Something went wrong while saving. Please try again.';
+  return L10n.t('Something went wrong while saving. Please try again.');
 }
 
 /// Fires a Firestore write without blocking on it, reporting a later failure.

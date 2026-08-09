@@ -5,6 +5,7 @@ import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
+import '../services/l10n.dart';
 import '../models/transaction.dart';
 import 'journal_screen.dart' show entrySlideUpRoute;
 import 'new_entry_screen.dart';
@@ -25,6 +26,7 @@ enum _LedgerFilter { all, income, expense, transfer }
 class _LedgerScreenState extends State<LedgerScreen> {
   _LedgerFilter _filter = _LedgerFilter.all;
   TransactionCategory? _category;
+  String? _tag;
   final _searchCtrl = TextEditingController();
   String _query = '';
   int _visibleCount = _pageSize;
@@ -35,8 +37,15 @@ class _LedgerScreenState extends State<LedgerScreen> {
     super.dispose();
   }
 
+  /// Every distinct tag across the archive, sorted.
+  List<String> _allTags(FinanceService svc) {
+    final tags = svc.transactions.expand((t) => t.tags).toSet().toList()..sort();
+    return tags;
+  }
+
   /// Applies the type filter, the optional category filter (only meaningful
-  /// for expenses), and the free-text search over title + note.
+  /// for expenses), the #tag filter, and the free-text search over
+  /// title + note + tags.
   List<LedgerEntry> _applyFilter(List<LedgerEntry> all) {
     var out = all;
     switch (_filter) {
@@ -48,12 +57,16 @@ class _LedgerScreenState extends State<LedgerScreen> {
     if (_filter == _LedgerFilter.expense && _category != null) {
       out = out.where((e) => e.category == _category).toList();
     }
+    if (_tag != null) {
+      out = out.where((e) => e.tags.contains(_tag)).toList();
+    }
     final q = _query.trim().toLowerCase();
     if (q.isNotEmpty) {
       out = out
           .where((e) =>
               e.title.toLowerCase().contains(q) ||
-              (e.note?.toLowerCase().contains(q) ?? false))
+              (e.note?.toLowerCase().contains(q) ?? false) ||
+              e.tags.any((tag) => tag.contains(q)))
           .toList();
     }
     return out;
@@ -61,6 +74,11 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: const MysticAppBar(),
@@ -84,12 +102,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('All Entries',
+                      Text(L10n.t('All Entries'),
                           style: headlineStyle(44,
                               italic: true, weight: FontWeight.w900)),
                       const SizedBox(height: 4),
                       Text(
-                        'ARCHIVE: ${all.length} ENTRIES',
+                        '${L10n.t('ARCHIVE')}: ${all.length} ${L10n.t('ENTRIES')}',
                         style: labelStyle(11,
                             letterSpacing: 2.0,
                             color: MysticColors.onSurfaceVariant
@@ -109,6 +127,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         onChanged: (f) => setState(() {
                           _filter = f;
                           _category = null;
+                          _tag = null;
                           _visibleCount = _pageSize;
                         }),
                       ),
@@ -118,6 +137,17 @@ class _LedgerScreenState extends State<LedgerScreen> {
                           selected: _category,
                           onChanged: (c) => setState(() {
                             _category = c;
+                            _visibleCount = _pageSize;
+                          }),
+                        ),
+                      ],
+                      // #tag filter — only when tags actually exist.
+                      if (_allTags(svc).isNotEmpty) ...[const SizedBox(height: 12),
+                        _TagRow(
+                          selected: _tag,
+                          tags: _allTags(svc),
+                          onChanged: (t) => setState(() {
+                            _tag = t;
                             _visibleCount = _pageSize;
                           }),
                         ),
@@ -143,7 +173,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
                             setState(() => _visibleCount += _pageSize),
                         icon: const Icon(Icons.expand_more),
                         label: Text(
-                          'Load ${(all.length - _visibleCount).clamp(0, _pageSize)} more  (${all.length - _visibleCount} remaining)',
+                          '${L10n.t('Load')} '
+                          '${(all.length - _visibleCount).clamp(0, _pageSize)} '
+                          '${L10n.t('more')}  '
+                          '(${all.length - _visibleCount} ${L10n.t('remaining')})',
                           style: headlineStyle(14,
                               italic: true, weight: FontWeight.w700),
                         ),
@@ -184,13 +217,13 @@ class _FilterRow extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _Chip(label: 'All',      active: current == _LedgerFilter.all,      rotation: -0.017, onTap: () => onChanged(_LedgerFilter.all)),
+          _Chip(label: L10n.t('All'),      active: current == _LedgerFilter.all,      rotation: -0.017, onTap: () => onChanged(_LedgerFilter.all)),
           const SizedBox(width: 12),
-          _Chip(label: 'Income',   active: current == _LedgerFilter.income,   rotation:  0.017, onTap: () => onChanged(_LedgerFilter.income)),
+          _Chip(label: L10n.t('Income'),   active: current == _LedgerFilter.income,   rotation:  0.017, onTap: () => onChanged(_LedgerFilter.income)),
           const SizedBox(width: 12),
-          _Chip(label: 'Expense',  active: current == _LedgerFilter.expense,  rotation: -0.009, onTap: () => onChanged(_LedgerFilter.expense)),
+          _Chip(label: L10n.t('Expense'),  active: current == _LedgerFilter.expense,  rotation: -0.009, onTap: () => onChanged(_LedgerFilter.expense)),
           const SizedBox(width: 12),
-          _Chip(label: 'Transfer', active: current == _LedgerFilter.transfer, rotation:  0.011, onTap: () => onChanged(_LedgerFilter.transfer)),
+          _Chip(label: L10n.t('Transfer'), active: current == _LedgerFilter.transfer, rotation:  0.011, onTap: () => onChanged(_LedgerFilter.transfer)),
         ],
       ),
     );
@@ -255,7 +288,7 @@ class _SearchField extends StatelessWidget {
         decoration: InputDecoration(
           border: InputBorder.none,
           isDense: true,
-          hintText: 'Search the archive…',
+          hintText: L10n.t('Search the archive…'),
           hintStyle: bodyStyle(15, color: MysticColors.onSurface.withOpacity(0.3))
               .copyWith(fontStyle: FontStyle.italic),
           icon: Icon(Icons.search,
@@ -290,7 +323,7 @@ class _CategoryRow extends StatelessWidget {
       child: Row(
         children: [
           _CategoryChip(
-            label: 'All',
+            label: L10n.t('All'),
             active: selected == null,
             onTap: () => onChanged(null),
           ),
@@ -312,6 +345,79 @@ class _CategoryChip extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
   const _CategoryChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? MysticColors.primary.withOpacity(0.14)
+              : MysticColors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active
+                ? MysticColors.primary.withOpacity(0.4)
+                : MysticColors.outlineVariant.withOpacity(0.2),
+          ),
+        ),
+        child: Text(
+          label.toUpperCase(),
+          style: labelStyle(9,
+              letterSpacing: 0.8,
+              color: active
+                  ? MysticColors.primary
+                  : MysticColors.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tag filter row ────────────────────────────────────────────────────────────
+
+class _TagRow extends StatelessWidget {
+  final String? selected;
+  final List<String> tags;
+  final ValueChanged<String?> onChanged;
+  const _TagRow({required this.selected, required this.tags, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _TagChip(
+            label: L10n.t('All tags'),
+            active: selected == null,
+            onTap: () => onChanged(null),
+          ),
+          for (final t in tags) ...[const SizedBox(width: 8),
+            _TagChip(
+              label: '#$t',
+              active: selected == t,
+              onTap: () => onChanged(t),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _TagChip({
     required this.label,
     required this.active,
     required this.onTap,
@@ -370,7 +476,7 @@ class _LedgerBook extends StatelessWidget {
               Icon(Icons.auto_stories_outlined,
                   size: 48, color: MysticColors.outlineVariant),
               const SizedBox(height: 12),
-              Text('No entries found',
+              Text(L10n.t('No entries found'),
                   style: headlineStyle(16,
                       italic: true,
                       weight: FontWeight.w600,
@@ -457,21 +563,21 @@ class _LedgerBook extends StatelessWidget {
                       context: context,
                       builder: (_) => AlertDialog(
                         backgroundColor: MysticColors.surfaceContainerLow,
-                        title: Text('Delete entry?',
+                        title: Text(L10n.t('Delete entry?'),
                             style: headlineStyle(18,
                                 italic: true, weight: FontWeight.w700)),
-                        content: Text('Remove "${entry.title}"?',
+                        content: Text('${L10n.t('Remove')} "${entry.title}"?',
                             style: bodyStyle(14)),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context, false),
-                            child: Text('Cancel',
+                            child: Text(L10n.t('Cancel'),
                                 style: bodyStyle(14,
                                     color: MysticColors.onSurfaceVariant)),
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(context, true),
-                            child: Text('Delete',
+                            child: Text(L10n.t('Delete'),
                                 style: bodyStyle(14,
                                     weight: FontWeight.w700,
                                     color: MysticColors.tertiary)),
@@ -525,7 +631,7 @@ class _LedgerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fmt     = NumberFormat('#,##0.00');
-    final dateFmt = DateFormat('MMM d, yyyy · h:mm a');
+    final timeFmt = DateFormat('h:mm a');
     final isTransfer = entry.kind == LedgerEntryKind.transfer;
     final isIncome   = entry.kind == LedgerEntryKind.income;
 
@@ -542,7 +648,7 @@ class _LedgerRow extends StatelessWidget {
             final from = svc.findAccount(entry.fromAccountId ?? '')?.name ?? entry.fromAccountId ?? '?';
             final to   = svc.findAccount(entry.toAccountId   ?? '')?.name ?? entry.toAccountId   ?? '?';
             final fee  = entry.fee > 0
-                ? '  (fee: $cur ${fmt.format(entry.fee)})'
+                ? '  (${L10n.t('fee')}: $cur ${fmt.format(entry.fee)})'
                 : '';
             return '$from → $to$fee';
           }()
@@ -596,7 +702,9 @@ class _LedgerRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  dateFmt.format(entry.date).toUpperCase(),
+                  '${L10n.date(entry.date, 'MMM d, yyyy')} · '
+                          '${timeFmt.format(entry.date)}'
+                      .toUpperCase(),
                   style: labelStyle(9,
                       letterSpacing: 0.8,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
@@ -613,6 +721,31 @@ class _LedgerRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                // Split line items — the categories this payment was spread
+                // across, so a split is visible at a glance.
+                if (entry.splits.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    children: entry.splits
+                        .map((s) => _MiniTag(
+                              label: s.category.label,
+                              color: entryColor,
+                            ))
+                        .toList(),
+                  ),
+                ],
+                if (entry.tags.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    children: entry.tags
+                        .map((t) => _MiniTag(label: '#$t'))
+                        .toList(),
+                  ),
+                ],
                 if (entry.note != null && entry.note!.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -634,6 +767,31 @@ class _LedgerRow extends StatelessWidget {
           ),
         ],
       ),
+      ),
+    );
+  }
+}
+
+class _MiniTag extends StatelessWidget {
+  final String label;
+  final Color? color;
+  const _MiniTag({required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? MysticColors.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.withOpacity(0.25), width: 0.5),
+      ),
+      child: Text(
+        label,
+        style: labelStyle(8, letterSpacing: 0.5, color: c),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

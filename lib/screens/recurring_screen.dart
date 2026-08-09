@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../services/l10n.dart';
+import '../services/theme_service.dart';
 import '../services/finance_service.dart';
 import '../models/recurring_transaction.dart';
 import '../models/transaction.dart';
@@ -22,6 +24,11 @@ class RecurringScreen extends StatefulWidget {
 class _RecurringScreenState extends State<RecurringScreen> {
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -33,7 +40,7 @@ class _RecurringScreenState extends State<RecurringScreen> {
           color: MysticColors.onSurface,
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Recurring',
+        title: Text(L10n.t('Recurring'),
             style: headlineStyle(22, italic: true, weight: FontWeight.w700)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.5),
@@ -47,14 +54,16 @@ class _RecurringScreenState extends State<RecurringScreen> {
           return Stack(
             children: [
               if (all.isEmpty)
-                const _EmptyRecurring()
+                // Non-const on purpose: must rebuild on theme/locale change.
+                // ignore: prefer_const_constructors
+                _EmptyRecurring()
               else
                 ListView(
                   padding: const EdgeInsets.fromLTRB(24, 28, 24, 120),
                   children: [
                     Text(
-                      '${all.length} SCHEDULE${all.length != 1 ? 'S' : ''} · '
-                      'DUE ONES PROPOSE THEMSELVES ON RESUME',
+                      '${all.length} ${all.length == 1 ? L10n.t('SCHEDULE') : L10n.t('SCHEDULES')} · '
+                      '${L10n.t('DUE ONES PROPOSE THEMSELVES ON RESUME')}',
                       style: labelStyle(10,
                           letterSpacing: 2.0,
                           color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
@@ -100,7 +109,7 @@ class _RecurringScreenState extends State<RecurringScreen> {
                         Icon(Icons.repeat,
                             color: MysticColors.onPrimary, size: 20),
                         const SizedBox(width: 8),
-                        Text('NEW SCHEDULE',
+                        Text(L10n.t('NEW SCHEDULE'),
                             style: labelStyle(11,
                                 letterSpacing: 1.5,
                                 color: MysticColors.onPrimary)),
@@ -143,15 +152,15 @@ class _EmptyRecurring extends StatelessWidget {
                 size: 56, color: MysticColors.outlineVariant),
             const SizedBox(height: 16),
             Text(
-              'Nothing repeats yet',
+              L10n.t('Nothing repeats yet'),
               style: headlineStyle(16,
                   italic: true, weight: FontWeight.w600,
                   color: MysticColors.outline),
             ),
             const SizedBox(height: 8),
             Text(
-              'Salary, rent, subscriptions — set a schedule once and each '
-              'occurrence lands in your review queue, ready to record.',
+              L10n.t('Salary, rent, subscriptions — set a schedule once and each '
+                  'occurrence lands in your review queue, ready to record.'),
               style: bodyStyle(13,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
               textAlign: TextAlign.center,
@@ -177,7 +186,8 @@ class _RecurringCard extends StatelessWidget {
     final isIncome = r.type == TransactionType.income;
     final accent = isIncome ? MysticColors.secondary : MysticColors.tertiary;
     final overdue = r.isActive && !r.nextDue.isAfter(DateTime.now());
-    final dateFmt = DateFormat('MMM d, yyyy');
+    final dateFmt =
+        DateFormat('MMM d, yyyy', L10n.instance.isAmharic ? 'am' : null);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -227,8 +237,8 @@ class _RecurringCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${r.frequency.label} · next due ${dateFmt.format(r.nextDue)}'
-                    '${overdue ? ' · DUE' : ''}',
+                    '${r.frequency.label} · ${L10n.t('next due')} ${dateFmt.format(r.nextDue)}'
+                    '${overdue ? ' · ${L10n.t('DUE')}' : ''}',
                     style: labelStyle(9,
                         letterSpacing: 0.5,
                         color: overdue
@@ -248,7 +258,7 @@ class _RecurringCard extends StatelessWidget {
                       weight: FontWeight.w700,
                       color: r.isActive ? accent : MysticColors.outline),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => reportIfWriteFails(
@@ -264,7 +274,7 @@ class _RecurringCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      r.isActive ? 'ACTIVE' : 'PAUSED',
+                      r.isActive ? L10n.t('ACTIVE') : L10n.t('PAUSED'),
                       style: labelStyle(9,
                           letterSpacing: 1.0,
                           color: r.isActive
@@ -369,10 +379,12 @@ class _RecurringSheetState extends State<_RecurringSheet> {
       firstDate: DateTime(DateTime.now().year - 1),
       lastDate: DateTime(DateTime.now().year + 10),
       builder: (ctx, child) => Theme(
-        data: ThemeData(
-          colorScheme: ColorScheme.light(
-            primary: MysticColors.primary,
-            surface: MysticColors.surfaceContainerLow,
+        data: Theme.of(ctx).copyWith(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: MysticColors.primary,
+            brightness: ThemeService.instance.isDark
+                ? Brightness.dark
+                : Brightness.light,
           ),
         ),
         child: child!,
@@ -393,7 +405,7 @@ class _RecurringSheetState extends State<_RecurringSheet> {
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
         decoration: BoxDecoration(
           color: MysticColors.surfaceContainerLow,
-          borderRadius: BorderRadius.only(
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(28),
             topRight: Radius.circular(28),
           ),
@@ -416,24 +428,26 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Text(_isEdit ? 'Amend Schedule' : 'New Recurring',
+                Text(_isEdit
+                    ? L10n.t('Amend Schedule')
+                    : L10n.t('New Recurring'),
                     style:
                         headlineStyle(24, italic: true, weight: FontWeight.w900)),
                 const SizedBox(height: 20),
 
-                _label('DESCRIPTION'),
+                _label(L10n.t('DESCRIPTION')),
                 TextFormField(
                   controller: _titleCtrl,
                   style: bodyStyle(16, weight: FontWeight.w600),
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: _input('e.g. Monthly salary'),
+                  decoration: _input(L10n.t('e.g. Monthly salary')),
                   validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Enter a description'
+                      ? L10n.t('Enter a description')
                       : null,
                 ),
                 const SizedBox(height: 20),
 
-                _label('AMOUNT'),
+                _label(L10n.t('AMOUNT')),
                 Row(
                   children: [
                     Text(_accountId == null
@@ -463,9 +477,13 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                           isDense: true,
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Enter an amount';
+                          if (v == null || v.isEmpty) {
+                            return L10n.t('Enter an amount');
+                          }
                           final p = double.tryParse(v.replaceAll(',', ''));
-                          if (p == null || p <= 0) return 'Enter a valid amount';
+                          if (p == null || p <= 0) {
+                            return L10n.t('Enter a valid amount');
+                          }
                           return null;
                         },
                       ),
@@ -477,12 +495,12 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                     color: MysticColors.outlineVariant.withOpacity(0.3)),
                 const SizedBox(height: 20),
 
-                _label('TYPE'),
+                _label(L10n.t('TYPE')),
                 Row(
                   children: [
                     Expanded(
                       child: _pill(
-                        label: 'Expense',
+                        label: L10n.t('Expense'),
                         selected: _type == TransactionType.expense,
                         color: MysticColors.tertiary,
                         onTap: () => setState(
@@ -492,7 +510,7 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _pill(
-                        label: 'Income',
+                        label: L10n.t('Income'),
                         selected: _type == TransactionType.income,
                         color: MysticColors.secondary,
                         onTap: () =>
@@ -503,7 +521,7 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                 ),
                 const SizedBox(height: 20),
 
-                _label('FREQUENCY'),
+                _label(L10n.t('FREQUENCY')),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -517,7 +535,7 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                 ),
                 const SizedBox(height: 20),
 
-                _label('NEXT DUE'),
+                _label(L10n.t('NEXT DUE')),
                 GestureDetector(
                   onTap: _pickNextDue,
                   child: Container(
@@ -532,7 +550,9 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                         Icon(Icons.event_outlined,
                             size: 18, color: MysticColors.primary),
                         const SizedBox(width: 10),
-                        Text(DateFormat('EEE, MMM d, yyyy').format(_nextDue),
+                        Text(DateFormat('EEE, MMM d, yyyy',
+                                L10n.instance.isAmharic ? 'am' : null)
+                            .format(_nextDue),
                             style: bodyStyle(14, weight: FontWeight.w600)),
                         const Spacer(),
                         Icon(Icons.edit_outlined,
@@ -543,7 +563,7 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                 ),
                 const SizedBox(height: 20),
 
-                _label('ACCOUNT'),
+                _label(L10n.t('ACCOUNT')),
                 DropdownButtonFormField<String>(
                   value:
                       accounts.any((a) => a.id == _accountId) ? _accountId : null,
@@ -573,13 +593,13 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                 ),
                 const SizedBox(height: 20),
 
-                _label('NOTE (OPTIONAL)'),
+                _label(L10n.t('NOTE (OPTIONAL)')),
                 TextFormField(
                   controller: _noteCtrl,
                   maxLines: 2,
                   style: bodyStyle(13, color: MysticColors.onSurfaceVariant)
                       .copyWith(fontStyle: FontStyle.italic),
-                  decoration: _input('Add context...'),
+                  decoration: _input(L10n.t('Add context...')),
                 ),
                 const SizedBox(height: 28),
 
@@ -600,7 +620,9 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                     ),
                     child: Center(
                       child: Text(
-                        _isEdit ? 'Update Schedule' : 'Set Schedule',
+                        _isEdit
+                            ? L10n.t('Update Schedule')
+                            : L10n.t('Set Schedule'),
                         style: headlineStyle(18,
                             italic: true, weight: FontWeight.w900,
                             color: MysticColors.onPrimary),
@@ -613,7 +635,7 @@ class _RecurringSheetState extends State<_RecurringSheet> {
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _confirmRemove,
-                    child: Text('Remove this schedule',
+                    child: Text(L10n.t('Remove this schedule'),
                         style: bodyStyle(13, color: MysticColors.tertiary)),
                   ),
                 ],
@@ -720,19 +742,19 @@ class _RecurringSheetState extends State<_RecurringSheet> {
       builder: (ctx) => AlertDialog(
         backgroundColor: MysticColors.surfaceContainerLow,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Remove schedule?',
+        title: Text(L10n.t('Remove schedule?'),
             style: headlineStyle(20, italic: true, weight: FontWeight.w700)),
-        content: Text('Delete the recurring "${r.title}"? Its past entries in '
-            'the ledger are untouched.', style: bodyStyle(14)),
+        content: Text(L10n.t('Delete the recurring "${r.title}"? Its past entries in '
+            'the ledger are untouched.'), style: bodyStyle(14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
+            child: Text(L10n.t('Cancel'),
                 style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove',
+            child: Text(L10n.t('Remove'),
                 style: bodyStyle(14,
                     weight: FontWeight.w700, color: MysticColors.tertiary)),
           ),

@@ -36,8 +36,10 @@ if (hasKeystore) {
 }
 
 android {
-    namespace "com.example.mystic_ledger"
-    compileSdk flutter.compileSdkVersion
+    namespace "com.mattathiasa.mysticledger"
+    // 36 matches the installed Android SDK (36.1.0). Play requires targetSdk 36
+    // for new apps and updates from August 2026.
+    compileSdk 36
     ndkVersion "25.1.8937393"
 
     compileOptions {
@@ -70,11 +72,11 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.mystic_ledger"
+        applicationId "com.mattathiasa.mysticledger"
         // 23 = Android 6.0. The `telephony` plugin (SMS auto-capture) needs it,
         // and it is the runtime-permission floor SMS access requires anyway.
         minSdkVersion 23
-        targetSdkVersion flutter.targetSdkVersion
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }

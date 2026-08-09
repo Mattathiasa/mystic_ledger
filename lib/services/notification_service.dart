@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'l10n.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -19,6 +21,12 @@ class NotificationService extends ChangeNotifier {
   static final NotificationService instance = NotificationService._();
 
   final _plugin = FlutterLocalNotificationsPlugin();
+
+  /// Taps on scheduled alerts, carrying the routing payload
+  /// (`budget:<id>` / `debt:<id>` / `tithe:<year>-<month>` / `recurring:<id>`).
+  /// The main scaffold listens and navigates to the relevant screen.
+  final _tapController = StreamController<String?>.broadcast();
+  Stream<String?> get onTap => _tapController.stream;
 
   bool _initialized = false;
   bool _enabled = false;
@@ -46,7 +54,12 @@ class NotificationService extends ChangeNotifier {
     const linux = LinuxInitializationSettings(defaultActionName: 'Open');
     const settings =
         InitializationSettings(android: android, iOS: darwin, linux: linux);
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        _tapController.add(response.payload);
+      },
+    );
     _initialized = true;
   }
 
@@ -84,6 +97,7 @@ class NotificationService extends ChangeNotifier {
     required String title,
     required String body,
     required DateTime when,
+    required String payload,
   }) async {
     if (!_enabled || !_initialized) return;
     final scheduled = tz.TZDateTime.from(when, tz.local);
@@ -94,20 +108,21 @@ class NotificationService extends ChangeNotifier {
         title,
         body,
         scheduled,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'ledger_alerts',
-            'Ledger alerts',
+            L10n.t('Ledger alerts'),
             channelDescription:
-                'Budget, debt, tithe and recurring reminders',
+                L10n.t('Budget, debt, tithe and recurring reminders'),
             importance: Importance.high,
             priority: Priority.high,
           ),
-          iOS: DarwinNotificationDetails(),
+          iOS: const DarwinNotificationDetails(),
         ),
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: payload,
       );
     } catch (_) {
       // Exact alarms can be unavailable on some Android builds; an inexact
@@ -146,10 +161,12 @@ class NotificationService extends ChangeNotifier {
     if (pct >= 0.8 && pct < 1.0) {
       await _showAt(
         id: id80,
-        title: 'Budget nearly spent',
-        body: 'You have used ${(pct * 100).toStringAsFixed(0)}% of the '
-            '${limit.toStringAsFixed(2)} limit.',
+        title: L10n.t('Budget nearly spent'),
+        body: '${L10n.t('You have used')} ${(pct * 100).toStringAsFixed(0)}% '
+            '${L10n.t('of the')} ${limit.toStringAsFixed(2)} '
+            '${L10n.t('limit.')}',
         when: periodEnd,
+        payload: 'budget:$budgetId',
       );
     } else {
       await cancel(id80);
@@ -158,10 +175,11 @@ class NotificationService extends ChangeNotifier {
     if (pct >= 1.0) {
       await _showAt(
         id: id100,
-        title: 'Budget limit reached',
-        body: 'Spending has met the ${limit.toStringAsFixed(2)} limit for '
-            'this period.',
+        title: L10n.t('Budget limit reached'),
+        body: '${L10n.t('Spending has met the')} ${limit.toStringAsFixed(2)} '
+            '${L10n.t('limit for this period.')}',
         when: periodEnd,
+        payload: 'budget:$budgetId',
       );
     } else {
       await cancel(id100);
@@ -178,15 +196,17 @@ class NotificationService extends ChangeNotifier {
     final dayBefore = dueDate.subtract(const Duration(days: 1));
     await _showAt(
       id: 'debt_before_$debtId'.hashCode,
-      title: 'Debt due tomorrow',
-      body: '$name comes due tomorrow.',
+      title: L10n.t('Debt due tomorrow'),
+      body: '$name ${L10n.t('comes due tomorrow.')}',
       when: DateTime(dayBefore.year, dayBefore.month, dayBefore.day, 9),
+      payload: 'debt:$debtId',
     );
     await _showAt(
       id: 'debt_on_$debtId'.hashCode,
-      title: 'Debt due today',
-      body: '$name is due today.',
+      title: L10n.t('Debt due today'),
+      body: '$name ${L10n.t('is due today.')}',
       when: DateTime(dueDate.year, dueDate.month, dueDate.day, 9),
+      payload: 'debt:$debtId',
     );
   }
 
@@ -201,9 +221,10 @@ class NotificationService extends ChangeNotifier {
     final lastDay = DateTime(month.year, month.month + 1, 0);
     await _showAt(
       id: 'tithe_${month.year}_${month.month}'.hashCode,
-      title: 'Tithe check-in',
-      body: 'The month ends today — record what you have set aside.',
+      title: L10n.t('Tithe check-in'),
+      body: L10n.t('The month ends today — record what you have set aside.'),
       when: DateTime(lastDay.year, lastDay.month, lastDay.day, 18),
+      payload: 'tithe:${month.year}-${month.month}',
     );
   }
 
@@ -217,8 +238,9 @@ class NotificationService extends ChangeNotifier {
     await _showAt(
       id: 'recurring_$recurringId'.hashCode,
       title: title,
-      body: 'This recurring entry is due — record it in the ledger.',
+      body: L10n.t('This recurring entry is due — record it in the ledger.'),
       when: DateTime(nextDue.year, nextDue.month, nextDue.day, 9),
+      payload: 'recurring:$recurringId',
     );
   }
 

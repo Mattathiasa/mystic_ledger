@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/account_model.dart';
+import 'l10n.dart';
 import '../models/transaction.dart';
 import '../models/transfer_model.dart';
 import '../models/debt_model.dart';
@@ -19,11 +21,11 @@ enum LedgerPeriod { week, month, sixMonths, year, all }
 extension LedgerPeriodDisplay on LedgerPeriod {
   String get label {
     switch (this) {
-      case LedgerPeriod.week:      return 'This Week';
-      case LedgerPeriod.month:     return 'This Month';
-      case LedgerPeriod.sixMonths: return 'Last 6 Months';
-      case LedgerPeriod.year:      return 'This Year';
-      case LedgerPeriod.all:       return 'All Time';
+      case LedgerPeriod.week:      return L10n.t('This Week');
+      case LedgerPeriod.month:     return L10n.t('This Month');
+      case LedgerPeriod.sixMonths: return L10n.t('Last 6 Months');
+      case LedgerPeriod.year:      return L10n.t('This Year');
+      case LedgerPeriod.all:       return L10n.t('All Time');
     }
   }
 
@@ -86,12 +88,23 @@ class FinanceService extends ChangeNotifier {
   double get titheRate     => _settings.titheRate;
 
   final List<StreamSubscription> _subs = [];
+  Timer? _loadingWatchdog;
 
   // ── Constructor ───────────────────────────────────────────────────────────
 
   FinanceService(this.userId) {
     _loadPrefs();
     _subscribe();
+    // Offline safety net: with persistence enabled, cached streams usually
+    // deliver instantly — but on a fresh install with no cache and no network
+    // a stream waits on the server forever. Release the loading gate after a
+    // few seconds so the (possibly empty) ledger renders instead of spinning.
+    _loadingWatchdog = Timer(const Duration(seconds: 8), () {
+      if (_isLoading) {
+        _isLoading = false;
+        notifyListeners();
+      }
+    });
   }
 
   // ── Privacy (device-local) ────────────────────────────────────────────────
@@ -233,6 +246,7 @@ class FinanceService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _loadingWatchdog?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
@@ -387,9 +401,14 @@ class FinanceService extends ChangeNotifier {
   }
 
   /// Live balance of every account, keyed by currency code.
+  /// Total native-currency holdings per currency, **excluding savings vaults**
+  /// so the sum matches [totalBalance]. Savings is a separate vault concept
+  /// (see [savingsSummary]) and showing it here made Insights disagree with
+  /// the Journal hero.
   Map<String, double> get balanceByCurrency {
     final map = <String, double>{};
-    for (final a in _accountList.where((a) => a.isActive)) {
+    for (final a in _accountList
+        .where((a) => a.isActive && a.type != AccountType.savings)) {
       map[a.currency] = (map[a.currency] ?? 0) + accountBalance(a.id);
     }
     return map;
@@ -513,7 +532,9 @@ class FinanceService extends ChangeNotifier {
     for (final t in _transactionList
         .where((t) => t.type == TransactionType.expense)
         .where((t) => _inRange(t.date, from, to))) {
-      map[t.category] = (map[t.category] ?? 0) + t.amountInBase;
+      for (final (cat, amount) in categoryAllocations(t)) {
+        map[cat] = (map[cat] ?? 0) + amount;
+      }
     }
     return map;
   }
@@ -538,8 +559,11 @@ class FinanceService extends ChangeNotifier {
   /// Live balance per account in base currency, largest first — for the
   /// account-distribution chart.
   List<AccountShare> get accountDistribution {
+    // Savings vaults are excluded to match [totalBalance] — see
+    // [balanceByCurrency]. Their slice of the pie is shown separately on the
+    // Savings screen, never counted twice.
     final shares = _accountList
-        .where((a) => a.isActive)
+        .where((a) => a.isActive && a.type != AccountType.savings)
         .map((a) => AccountShare(
               account: a,
               native:  accountBalance(a.id),
@@ -910,21 +934,142 @@ class FinanceService extends ChangeNotifier {
 
   Future<void> deleteTransaction(String id) => _transactions.doc(id).delete();
 
-  // ── WRITE: Delete all user data (for account deletion) ───────────────────
+  // ── RESTORE (encrypted .mlbackup) ────────────────────────────────────────
 
-  Future<void> deleteAllUserData() async {
-    final collections = [_accounts, _transactions, _transfers, _debts, _budgets];
-    for (final col in collections) {
-      final snap = await col.get();
-      if (snap.docs.isEmpty) continue;
+  /// Deletes every document in [col], chunked so a collection with more than
+  /// 500 docs (Firestore's per-batch cap) is still fully removed.
+  Future<void> _wipeCollection(CollectionReference col) async {
+    final snap = await col.get();
+    if (snap.docs.isEmpty) return;
+    for (var i = 0; i < snap.docs.length; i += 400) {
+      final chunk =
+          snap.docs.sublist(i, math.min(i + 400, snap.docs.length));
       final batch = _db.batch();
-      for (final doc in snap.docs) {
+      for (final doc in chunk) {
         batch.delete(doc.reference);
       }
       await batch.commit();
     }
+  }
+
+  /// Writes [items] to [col] in batches (a batch caps at 500 operations).
+  Future<void> _writeBatch<T>(
+    CollectionReference col,
+    List<T> items,
+    String Function(T) idOf,
+    Map<String, dynamic> Function(T) toMap,
+  ) async {
+    for (var i = 0; i < items.length; i += 400) {
+      final chunk = items.sublist(i, math.min(i + 400, items.length));
+      final batch = _db.batch();
+      for (final item in chunk) {
+        batch.set(col.doc(idOf(item)), toMap(item));
+      }
+      await batch.commit();
+    }
+  }
+
+  /// Replaces everything with the contents of a decrypted backup.
+  ///
+  /// Wipe-then-write makes a restore reflect the archive exactly, even when
+  /// the current cloud data has extra documents. The live streams repopulate
+  /// the in-memory caches automatically as the writes land.
+  Future<void> restoreAll({
+    required List<Account> accounts,
+    required List<Transaction> transactions,
+    required List<Transfer> transfers,
+    required List<Debt> debts,
+    required List<Budget> budgets,
+    required List<RecurringTransaction> recurring,
+    AppSettings? settings,
+  }) async {
+    for (final col in [
+      _accounts,
+      _transactions,
+      _transfers,
+      _debts,
+      _budgets,
+      _recurring,
+    ]) {
+      await _wipeCollection(col);
+    }
+
+    await _writeBatch(_accounts, accounts, (a) => a.id, (a) => a.toMap());
+    await _writeBatch(
+        _transactions, transactions, (t) => t.id, (t) => t.toMap());
+    await _writeBatch(_transfers, transfers, (t) => t.id, (t) => t.toMap());
+    await _writeBatch(_debts, debts, (d) => d.id, (d) => d.toMap());
+    await _writeBatch(_budgets, budgets, (b) => b.id, (b) => b.toMap());
+    await _writeBatch(
+        _recurring, recurring, (r) => r.id, (r) => r.toMap());
+    if (settings != null) {
+      await _settingsDoc.set(settings.toMap());
+    }
+  }
+
+  /// Writes imported records (from a CSV) into the archive without touching
+  /// anything else — a merge, not a replace. Batched so large imports do not
+  /// cost one network round-trip per row.
+  Future<void> importAll({
+    required List<Transaction> transactions,
+    required List<Transfer> transfers,
+    required List<Debt> debts,
+    required List<Budget> budgets,
+  }) async {
+    await _writeBatch(
+        _transactions, transactions, (t) => t.id, (t) => t.toMap());
+    await _writeBatch(_transfers, transfers, (t) => t.id, (t) => t.toMap());
+    await _writeBatch(_debts, debts, (d) => d.id, (d) => d.toMap());
+    await _writeBatch(_budgets, budgets, (b) => b.id, (b) => b.toMap());
+  }
+
+  // ── WRITE: Delete all user data (for account deletion) ───────────────────
+
+  Future<void> deleteAllUserData() async {
+    // Every collection the user can hold — including recurring schedules and
+    // the settings doc, which are subcollections of users/{uid} and would
+    // otherwise survive the parent-document delete.
+    for (final col in [
+      _accounts,
+      _transactions,
+      _transfers,
+      _debts,
+      _budgets,
+      _recurring,
+    ]) {
+      await _wipeCollection(col);
+    }
+    await _settingsDoc.delete().catchError((_) {});
     await _db.collection('users').doc(userId).delete();
   }
+}
+
+// ── Category allocation (split-aware) ────────────────────────────────────────
+
+/// How [t] should be allocated across categories for reports.
+///
+/// A transaction without splits is its own category for the whole amount. A
+/// split transaction is spread across its line items, each converted to the
+/// base currency. Pure so the report maths are testable.
+Iterable<(TransactionCategory, double)> categoryAllocations(Transaction t) sync* {
+  if (t.splits.isEmpty) {
+    yield (t.category, t.amountInBase);
+  } else {
+    for (final s in t.splits) {
+      yield (s.category, s.amount * t.rateToBase);
+    }
+  }
+}
+
+/// Sum of the parts of [t] that fall in [category], in base currency.
+/// Splits that do not match the category contribute nothing.
+double _allocatedIn(Transaction t, TransactionCategory category) {
+  if (t.splits.isEmpty) {
+    return t.category == category ? t.amountInBase + t.feeInBase : 0.0;
+  }
+  return t.splits
+      .where((s) => s.category == category)
+      .fold(0.0, (acc, s) => acc + s.amount * t.rateToBase);
 }
 
 // ── Tithe arithmetic ──────────────────────────────────────────────────────────
@@ -932,7 +1077,8 @@ class FinanceService extends ChangeNotifier {
 /// Sum of tithe already recorded, in base currency.
 ///
 /// Only expense entries categorised as tithe count — recording the giving is
-/// what makes it count against the obligation.
+/// what makes it count against the obligation. A split transaction counts its
+/// tithe line(s).
 double computeTitheGiven(
   Iterable<Transaction> transactions, {
   DateTime? from,
@@ -940,11 +1086,10 @@ double computeTitheGiven(
 }) =>
     transactions
         .where((t) => t.type == TransactionType.expense)
-        .where((t) => t.category == TransactionCategory.tithe)
         .where((t) =>
             (from == null || !t.date.isBefore(from)) &&
             (to == null || t.date.isBefore(to)))
-        .fold(0.0, (s, t) => s + t.amountInBase);
+        .fold(0.0, (s, t) => s + _allocatedIn(t, TransactionCategory.tithe));
 
 /// What is owed, what has been given, and how far along that leaves you.
 class TitheStatus {
@@ -1119,6 +1264,12 @@ class LedgerEntry {
   /// Expense/income category, null for transfers.
   final TransactionCategory? category;
 
+  /// #tags carried by a transaction entry.
+  final List<String> tags;
+
+  /// Split line items carried by a transaction entry.
+  final List<TransactionSplit> splits;
+
   const LedgerEntry._({
     required this.id,
     required this.title,
@@ -1136,6 +1287,8 @@ class LedgerEntry {
     this.reversalOfId,
     this.transferCategory,
     this.category,
+    this.tags       = const [],
+    this.splits     = const [],
   })  : toAmount   = toAmount   ?? amount,
         toCurrency = toCurrency ?? currency;
 
@@ -1155,11 +1308,13 @@ class LedgerEntry {
         accountId: t.accountId,
         note:      t.note,
         category:  t.category,
+        tags:      t.tags,
+        splits:    t.splits,
       );
 
   factory LedgerEntry.fromTransfer(Transfer t) => LedgerEntry._(
         id:            t.id,
-        title:         t.isReversal ? 'Reversal' : 'Transfer',
+        title:         t.isReversal ? L10n.t('Reversal') : L10n.t('Transfer'),
         amount:        t.amount,
         fee:           t.fee,
         kind:          LedgerEntryKind.transfer,
@@ -1239,8 +1394,8 @@ double computeSpentAgainstBudget(
         .where((t) => t.type == TransactionType.expense)
         .where((t) => (from == null || !t.date.isBefore(from)) &&
             (to == null || t.date.isBefore(to)))
-        .where((t) => budget.category == null || t.category == budget.category)
-        .fold(0.0, (s, t) => s + t.amountInBase + t.feeInBase);
+        .fold(0.0, (s, t) =>
+            budget.category == null ? s + t.amountInBase + t.feeInBase : s + _allocatedIn(t, budget.category!));
 
 // ── Trend bucketing arithmetic ───────────────────────────────────────────────
 

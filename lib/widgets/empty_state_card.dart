@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/account_model.dart';
 import '../screens/add_account_screen.dart';
+import '../services/l10n.dart';
 import 'app_theme.dart';
 
 /// The shared "there is nothing here yet" card.
@@ -30,6 +31,11 @@ class EmptyStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final muted = MysticColors.onSurfaceVariant.withOpacity(0.5);
 
     return Container(
@@ -106,7 +112,7 @@ class NoAccountsCard extends StatelessWidget {
     required this.headline,
     required this.body,
     this.presetType = AccountType.bank,
-    this.ctaLabel = 'Add an account',
+    this.ctaLabel = '',
   });
 
   @override
@@ -117,7 +123,7 @@ class NoAccountsCard extends StatelessWidget {
           : Icons.account_balance_wallet_outlined,
       headline: headline,
       body: body,
-      ctaLabel: ctaLabel,
+      ctaLabel: ctaLabel.isEmpty ? L10n.t('Add an account') : ctaLabel,
       onCta: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => AddAccountScreen(initialType: presetType),

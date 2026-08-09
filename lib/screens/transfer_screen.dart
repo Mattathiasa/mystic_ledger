@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../services/l10n.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/empty_state_card.dart';
@@ -74,16 +75,16 @@ class _TransferScreenState extends State<TransferScreen> {
     if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_fromId == null || _toId == null) {
-      _showError('Please select both accounts.');
+      _showError(L10n.t('Please select both accounts.'));
       return;
     }
     if (_fromId == _toId) {
-      _showError('From and To accounts must be different.');
+      _showError(L10n.t('From and To accounts must be different.'));
       return;
     }
     final amount = _amount;
     if (amount <= 0) {
-      _showError('Enter a valid amount greater than zero.');
+      _showError(L10n.t('Enter a valid amount greater than zero.'));
       return;
     }
     final fee = _fee;
@@ -92,22 +93,22 @@ class _TransferScreenState extends State<TransferScreen> {
     final from = svc.findAccount(_fromId!);
     final to   = svc.findAccount(_toId!);
     if (from == null || to == null) {
-      _showError('That account is no longer available.');
+      _showError(L10n.t('That account is no longer available.'));
       return;
     }
 
     final crossCurrency = from.currency != to.currency;
     final rate = crossCurrency ? _rate : 1.0;
     if (crossCurrency && rate <= 0) {
-      _showError(
-          'Enter the rate you got: 1 ${from.currency} = ? ${to.currency}');
+      _showError('${L10n.t('Enter the rate you got:')} '
+          '1 ${from.currency} = ? ${to.currency}');
       return;
     }
 
     final available = svc.accountBalance(_fromId!);
     if (amount + fee > available) {
       final fmt = NumberFormat('#,##0.00');
-      _showError('Insufficient balance. Available: '
+      _showError('${L10n.t('Insufficient balance. Available:')} '
           '${from.currency} ${fmt.format(available)}');
       return;
     }
@@ -142,8 +143,8 @@ class _TransferScreenState extends State<TransferScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          'Transfer recorded — gold moved between vaults.',
-          style: bodyStyle(13, color: Colors.white),
+          L10n.t('Transfer recorded — gold moved between vaults.'),
+          style: bodyStyle(13, color: MysticColors.onSecondary),
         ),
         backgroundColor: MysticColors.secondary,
         behavior: SnackBarBehavior.floating,
@@ -155,7 +156,7 @@ class _TransferScreenState extends State<TransferScreen> {
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+        content: Text(msg, style: bodyStyle(13, color: MysticColors.onTertiary)),
         backgroundColor: MysticColors.tertiary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -165,6 +166,11 @@ class _TransferScreenState extends State<TransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final svc      = context.watch<FinanceService>();
     final accounts = svc.accounts; // all accounts including savings
 
@@ -194,7 +200,7 @@ class _TransferScreenState extends State<TransferScreen> {
             onPressed: () => Navigator.of(context).pop(),
           ),
           title: Text(
-            'Transfer Funds',
+            L10n.t('Transfer Funds'),
             style: headlineStyle(22, italic: true, weight: FontWeight.w700),
           ),
           bottom: PreferredSize(
@@ -214,14 +220,14 @@ class _TransferScreenState extends State<TransferScreen> {
                 children: [
                   // ── Label ──────────────────────────────────────────────
                   Text(
-                    'MOVE GOLD BETWEEN VAULTS',
+                    L10n.t('MOVE GOLD BETWEEN VAULTS'),
                     style: labelStyle(10,
                         letterSpacing: 2.0,
                         color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Transfer',
+                    L10n.t('Transfer'),
                     style: headlineStyle(40, italic: true, weight: FontWeight.w900),
                   ),
                   const SizedBox(height: 32),
@@ -232,11 +238,11 @@ class _TransferScreenState extends State<TransferScreen> {
                   if (accounts.length < 2)
                     NoAccountsCard(
                       headline: accounts.isEmpty
-                          ? 'No vaults to move between'
-                          : 'Only one vault so far',
-                      body: 'A transfer moves gold from one account to another, '
+                          ? L10n.t('No vaults to move between')
+                          : L10n.t('Only one vault so far'),
+                      body: L10n.t('A transfer moves gold from one account to another, '
                           'so it needs at least two. You have '
-                          '${accounts.length}.',
+                          '${accounts.length}.'),
                     )
                   else
                   // ── Form card ──────────────────────────────────────────
@@ -259,7 +265,7 @@ class _TransferScreenState extends State<TransferScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Amount
-                        const _SectionLabel('AMOUNT'),
+                        _SectionLabel(L10n.t('AMOUNT')),
                         const SizedBox(height: 8),
                         _AmountRow(
                           controller: _amountCtrl,
@@ -280,15 +286,17 @@ class _TransferScreenState extends State<TransferScreen> {
                         ],
 
                         // Fee (optional)
-                        const _SectionLabel(
-                            'TRANSFER FEE / SERVICE CHARGE (OPTIONAL)'),
+                        _SectionLabel(
+                            L10n.t('TRANSFER FEE / SERVICE CHARGE (OPTIONAL)')),
                         const SizedBox(height: 8),
                         _FeeField(
                           controller: _feeCtrl,
                           currency: fromCurrency,
                         ),
                         const SizedBox(height: 28),
-                        const _Divider(),
+                        // Non-const on purpose: must rebuild on theme/locale change.
+                        // ignore: prefer_const_constructors
+                        _Divider(),
 
                         // From / To selectors
                         const SizedBox(height: 24),
@@ -301,11 +309,13 @@ class _TransferScreenState extends State<TransferScreen> {
                           onSwap: _swap,
                         ),
                         const SizedBox(height: 28),
-                        const _Divider(),
+                        // Non-const on purpose: must rebuild on theme/locale change.
+                        // ignore: prefer_const_constructors
+                        _Divider(),
 
                         // Category
                         const SizedBox(height: 24),
-                        const _SectionLabel('WHAT IS THIS FOR? (OPTIONAL)'),
+                        _SectionLabel(L10n.t('WHAT IS THIS FOR? (OPTIONAL)')),
                         const SizedBox(height: 12),
                         _CategoryPicker(
                           selected: _category,
@@ -313,11 +323,13 @@ class _TransferScreenState extends State<TransferScreen> {
                               () => _category = _category == c ? null : c),
                         ),
                         const SizedBox(height: 28),
-                        const _Divider(),
+                        // Non-const on purpose: must rebuild on theme/locale change.
+                        // ignore: prefer_const_constructors
+                        _Divider(),
 
                         // Note
                         const SizedBox(height: 24),
-                        const _SectionLabel('NOTE (OPTIONAL)'),
+                        _SectionLabel(L10n.t('NOTE (OPTIONAL)')),
                         const SizedBox(height: 8),
                         _NoteField(controller: _noteCtrl),
                         const SizedBox(height: 32),
@@ -333,7 +345,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text(
-                        'CANCEL',
+                        L10n.t('CANCEL'),
                         style: labelStyle(11,
                             letterSpacing: 1.5,
                             color: MysticColors.onSurfaceVariant
@@ -389,9 +401,11 @@ class _AmountRow extends StatelessWidget {
               isDense: true,
             ),
             validator: (v) {
-              if (v == null || v.isEmpty) return 'Enter an amount';
+              if (v == null || v.isEmpty) return L10n.t('Enter an amount');
               final parsed = double.tryParse(v.replaceAll(',', ''));
-              if (parsed == null || parsed <= 0) return 'Enter a valid amount';
+              if (parsed == null || parsed <= 0) {
+                return L10n.t('Enter a valid amount');
+              }
               return null;
             },
           ),
@@ -425,7 +439,7 @@ class _AccountFlowRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('FROM'),
+        _SectionLabel(L10n.t('FROM')),
         const SizedBox(height: 8),
         _AccountDropdown(
           accounts: accounts,
@@ -436,7 +450,7 @@ class _AccountFlowRow extends StatelessWidget {
         // Arrow connector doubles as the swap control.
         Center(
           child: Tooltip(
-            message: 'Swap From and To',
+            message: L10n.t('Swap From and To'),
             child: GestureDetector(
               onTap: onSwap,
               child: Container(
@@ -454,7 +468,7 @@ class _AccountFlowRow extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        const _SectionLabel('TO'),
+        _SectionLabel(L10n.t('TO')),
         const SizedBox(height: 8),
         _AccountDropdown(
           accounts: accounts,
@@ -539,7 +553,7 @@ class _FeeField extends StatelessWidget {
                 color: MysticColors.tertiary),
             decoration: InputDecoration(
               border: InputBorder.none,
-              hintText: '0.00  (bank/service fee)',
+              hintText: L10n.t('0.00  (bank/service fee)'),
               hintStyle: bodyStyle(14, color: MysticColors.onSurface.withOpacity(0.2)),
               contentPadding: EdgeInsets.zero,
               isDense: true,
@@ -601,7 +615,7 @@ class _ExchangeRateRow extends StatelessWidget {
                   size: 14, color: MysticColors.primary),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('RATE AT THIS TIME',
+                child: Text(L10n.t('RATE AT THIS TIME'),
                     style: labelStyle(9,
                         letterSpacing: 1.5, color: MysticColors.primary)),
               ),
@@ -649,8 +663,9 @@ class _ExchangeRateRow extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             ready
-                ? '≈ $toCurrency ${fmt.format(converted)} will arrive'
-                : 'Enter the rate to see what arrives',
+                ? '≈ $toCurrency ${fmt.format(converted)} '
+                    '${L10n.t('will arrive')}'
+                : L10n.t('Enter the rate to see what arrives'),
             style: bodyStyle(13,
                     weight: ready ? FontWeight.w700 : FontWeight.w400,
                     color: ready
@@ -738,7 +753,7 @@ class _NoteField extends StatelessWidget {
           .copyWith(fontStyle: FontStyle.italic),
       decoration: InputDecoration(
         border: InputBorder.none,
-        hintText: 'A brief annotation for the archive...',
+        hintText: L10n.t('A brief annotation for the archive...'),
         hintStyle: bodyStyle(14, color: MysticColors.onSurface.withOpacity(0.2))
             .copyWith(fontStyle: FontStyle.italic),
         contentPadding: const EdgeInsets.only(bottom: 8),
@@ -786,14 +801,14 @@ class _SaveButton extends StatelessWidget {
         ),
         child: Center(
           child: busy
-              ? const SizedBox(
+              ? SizedBox(
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2),
+                      color: MysticColors.onPrimary, strokeWidth: 2),
                 )
               : Text(
-                  'Execute Transfer',
+                  L10n.t('Execute Transfer'),
                   style: headlineStyle(20,
                       italic: true,
                       weight: FontWeight.w900,

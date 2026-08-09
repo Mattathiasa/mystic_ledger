@@ -7,6 +7,7 @@ import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/mystic_app_bar.dart';
 import '../services/finance_service.dart';
+import '../services/l10n.dart';
 import '../models/account_model.dart';
 import '../models/transaction.dart';
 import 'add_account_screen.dart';
@@ -32,14 +33,14 @@ class _GivingScreenState extends State<GivingScreen> {
 
   String get _periodLabel {
     if (_customRange != null) {
-      final f = DateFormat('MMM d, yyyy').format(_customRange!.start);
-      final t = DateFormat('MMM d, yyyy').format(_customRange!.end);
+      final f = L10n.date(_customRange!.start, 'MMM d, yyyy');
+      final t = L10n.date(_customRange!.end, 'MMM d, yyyy');
       return '$f – $t'.toUpperCase();
     }
     switch (_period) {
-      case LedgerPeriod.week:  return 'THIS WEEK';
-      case LedgerPeriod.month: return 'THIS MONTH';
-      default:                 return 'ALL TIME';
+      case LedgerPeriod.week:  return L10n.t('THIS WEEK');
+      case LedgerPeriod.month: return L10n.t('THIS MONTH');
+      default:                 return L10n.t('ALL TIME');
     }
   }
 
@@ -55,8 +56,8 @@ class _GivingScreenState extends State<GivingScreen> {
       lastDate: now,
       initialDateRange:
           _customRange ?? DateTimeRange(start: now.subtract(const Duration(days: 30)), end: now),
-      helpText: 'Select a giving period',
-      saveText: 'Apply',
+      helpText: L10n.t('Select a giving period'),
+      saveText: L10n.t('Apply'),
     );
     if (picked == null) return;
     setState(() => _customRange = picked);
@@ -64,6 +65,11 @@ class _GivingScreenState extends State<GivingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: const MysticAppBar(),
@@ -88,7 +94,9 @@ class _GivingScreenState extends State<GivingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _GivingHeader(),
+                // Non-const on purpose: must rebuild on theme/locale change.
+                // ignore: prefer_const_constructors
+                _GivingHeader(),
                 const SizedBox(height: 24),
                 _PeriodToggle(
                   selected: _period,
@@ -144,14 +152,15 @@ class _GivingScreenState extends State<GivingScreen> {
       // Naming the problem isn't much use without a way to fix it — a new user
       // has no accounts at all and nothing here tells them where to go.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('You need an account before you can record giving.',
-            style: bodyStyle(13, color: Colors.white)),
+        content: Text(
+            L10n.t('You need an account before you can record giving.'),
+            style: bodyStyle(13, color: MysticColors.onTertiary)),
         backgroundColor: MysticColors.tertiary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         action: SnackBarAction(
-          label: 'ADD ACCOUNT',
-          textColor: Colors.white,
+          label: L10n.t('ADD ACCOUNT'),
+          textColor: MysticColors.onTertiary,
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const AddAccountScreen()),
           ),
@@ -184,7 +193,7 @@ class _GivingScreenState extends State<GivingScreen> {
       svc.addTransaction(
         Transaction(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: 'Tithe',
+          title: L10n.t('Tithe'),
           amount: result.amount,
           type: TransactionType.expense,
           category: TransactionCategory.tithe,
@@ -196,7 +205,7 @@ class _GivingScreenState extends State<GivingScreen> {
       ),
     );
     if (!mounted) return;
-    _snack('Recorded — your giving is now in the ledger.',
+    _snack(L10n.t('Recorded — your giving is now in the ledger.'),
         MysticColors.secondary);
   }
 
@@ -212,7 +221,7 @@ class _GivingScreenState extends State<GivingScreen> {
 
   void _snack(String msg, Color bg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: bodyStyle(13, color: Colors.white)),
+      content: Text(msg, style: bodyStyle(13, color: readableOn(bg))),
       backgroundColor: bg,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -252,25 +261,25 @@ class _PeriodToggle extends StatelessWidget {
       child: Row(
         children: [
           _Tab(
-            label: 'All Time',
+            label: L10n.t('All Time'),
             icon: Icons.all_inclusive,
             active: selected == LedgerPeriod.all && customRange == null,
             onTap: () => onChanged(LedgerPeriod.all),
           ),
           _Tab(
-            label: 'Monthly',
+            label: L10n.t('Monthly'),
             icon: Icons.calendar_month_outlined,
             active: selected == LedgerPeriod.month && customRange == null,
             onTap: () => onChanged(LedgerPeriod.month),
           ),
           _Tab(
-            label: 'Weekly (Sunday)',
+            label: L10n.t('Weekly (Sunday)'),
             icon: Icons.church_outlined,
             active: selected == LedgerPeriod.week && customRange == null,
             onTap: () => onChanged(LedgerPeriod.week),
           ),
           _Tab(
-            label: customRange != null ? 'Custom' : 'Custom…',
+            label: customRange != null ? L10n.t('Custom') : L10n.t('Custom…'),
             icon: Icons.date_range,
             active: customRange != null,
             onTap: onCustom,
@@ -336,12 +345,12 @@ class _GivingHeader extends StatelessWidget {
         Icon(Icons.star_border,
             size: 28, color: MysticColors.primary.withOpacity(0.6)),
         const SizedBox(height: 12),
-        Text('Sacred Giving',
+        Text(L10n.t('Sacred Giving'),
             style: headlineStyle(38, italic: true, weight: FontWeight.w900),
             textAlign: TextAlign.center),
         const SizedBox(height: 6),
         Text(
-          'SESSION: CURRENT CYCLE',
+          L10n.t('SESSION: CURRENT CYCLE'),
           style: labelStyle(11,
               letterSpacing: 2.0,
               color: MysticColors.onSurfaceVariant.withOpacity(0.6)),
@@ -385,7 +394,7 @@ class _IncomeCard extends StatelessWidget {
             BoxShadow(
               color: MysticColors.surfaceContainerLow,
               blurRadius: 0,
-              offset: Offset(0, 10),
+              offset: const Offset(0, 10),
               spreadRadius: -5,
             ),
           ],
@@ -404,7 +413,7 @@ class _IncomeCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('$periodLabel HARVEST',
+                Text('$periodLabel ${L10n.t('HARVEST')}',
                     style: labelStyle(11,
                         letterSpacing: 2.0, color: MysticColors.secondary)),
                 const SizedBox(height: 8),
@@ -424,7 +433,8 @@ class _IncomeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Income recorded for this period — the basis for your tithe.',
+                  L10n.t('Income recorded for this period — the basis for '
+                      'your tithe.'),
                   style: bodyStyle(13,
                           color: MysticColors.onSurfaceVariant)
                       .copyWith(fontStyle: FontStyle.italic),
@@ -509,8 +519,8 @@ class _TitheBreakdown extends StatelessWidget {
               Expanded(
                 child: Text(
                   period == LedgerPeriod.week
-                      ? 'Sunday Offering'
-                      : 'Tithe',
+                      ? L10n.t('Sunday Offering')
+                      : L10n.t('Tithe'),
                   style: headlineStyle(20,
                       italic: true, weight: FontWeight.w800),
                 ),
@@ -545,13 +555,13 @@ class _TitheBreakdown extends StatelessWidget {
           const SizedBox(height: 20),
 
           _Line(
-            label: 'OBLIGATION',
+            label: L10n.t('OBLIGATION'),
             value: '$currency ${fmt.format(obligation)}',
             color: MysticColors.onSurface,
           ),
           const SizedBox(height: 10),
           _Line(
-            label: 'ALREADY GIVEN',
+            label: L10n.t('ALREADY GIVEN'),
             value: '− $currency ${fmt.format(given)}',
             color: MysticColors.secondary,
           ),
@@ -560,7 +570,7 @@ class _TitheBreakdown extends StatelessWidget {
               height: 1, color: MysticColors.outlineVariant.withOpacity(0.25)),
           const SizedBox(height: 12),
           _Line(
-            label: 'REMAINING',
+            label: L10n.t('REMAINING'),
             value: '$currency ${fmt.format(remaining)}',
             color: settled ? MysticColors.secondary : MysticColors.primary,
             emphasise: true,
@@ -598,10 +608,11 @@ class _TitheBreakdown extends StatelessWidget {
                 child: Text(
                   settled
                       ? (obligation <= 0
-                          ? 'No income recorded for this period yet.'
-                          : 'Fulfilled for this period.')
-                      : '${(progress * 100).round()}% fulfilled — '
-                          '$currency ${fmt.format(remaining)} still owed.',
+                          ? L10n.t('No income recorded for this period yet.')
+                          : L10n.t('Fulfilled for this period.'))
+                      : '${(progress * 100).round()}% ${L10n.t('fulfilled')} — '
+                          '$currency ${fmt.format(remaining)} '
+                          '${L10n.t('still owed')}.',
                   style: bodyStyle(13,
                       color: MysticColors.onSurfaceVariant),
                 ),
@@ -629,7 +640,9 @@ class _TitheBreakdown extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    settled ? 'Nothing outstanding' : 'Record Giving',
+                    settled
+                        ? L10n.t('Nothing outstanding')
+                        : L10n.t('Record Giving'),
                     style: headlineStyle(14,
                         italic: false,
                         weight: FontWeight.w700,
@@ -766,12 +779,12 @@ class _GivingHistory extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('HISTORY OF GIVING',
+            Text(L10n.t('HISTORY OF GIVING'),
                 style: labelStyle(10,
                     letterSpacing: 2.0,
                     color: MysticColors.onSurfaceVariant.withOpacity(0.7))),
             if (entries.isNotEmpty)
-              Text('${entries.length} ENTR${entries.length == 1 ? 'Y' : 'IES'}',
+              Text('${entries.length} ${L10n.t('ENTRIES')}',
                   style: labelStyle(9,
                       letterSpacing: 1.2,
                       color: MysticColors.secondary)),
@@ -794,7 +807,7 @@ class _GivingHistory extends StatelessWidget {
                           size: 40, color: MysticColors.outlineVariant),
                       const SizedBox(height: 10),
                       Text(
-                        'No giving recorded for this period.',
+                        L10n.t('No giving recorded for this period.'),
                         style: bodyStyle(12,
                                 color: MysticColors.onSurfaceVariant
                                     .withOpacity(0.6))
@@ -839,11 +852,12 @@ class _GivingHistory extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  t.title.isEmpty ? 'Giving' : t.title,
+                                  t.title.isEmpty ? L10n.t('Giving') : t.title,
                                   style: bodyStyle(14, weight: FontWeight.w700),
                                 ),
                                 Text(
-                                  '${DateFormat('MMM d, yyyy · h:mm a').format(t.date)}'
+                                  '${L10n.date(t.date, 'MMM d, yyyy')} · '
+                                  '${DateFormat('h:mm a').format(t.date)}'
                                   ' · $account'
                                   '${t.note != null && t.note!.isNotEmpty ? ' · ${t.note}' : ''}',
                                   style: labelStyle(9,
@@ -858,7 +872,7 @@ class _GivingHistory extends StatelessWidget {
                           ),
                           Text(
                             '-${t.currency} ${fmt.format(t.amount)}'
-                            '${t.fee > 0 ? ' +${fmt.format(t.fee)} fee' : ''}',
+                            '${t.fee > 0 ? ' +${fmt.format(t.fee)} ${L10n.t('fee')}' : ''}',
                             style: bodyStyle(14,
                                 weight: FontWeight.w800,
                                 color: MysticColors.secondary),
@@ -939,11 +953,11 @@ class _GiveSheetState extends State<_GiveSheet> {
             ),
           ),
           const SizedBox(height: 24),
-          Text('Record Giving',
+          Text(L10n.t('Record Giving'),
               style: headlineStyle(26, italic: true, weight: FontWeight.w900)),
           const SizedBox(height: 20),
 
-          Text('AMOUNT',
+          Text(L10n.t('AMOUNT'),
               style: labelStyle(10,
                   letterSpacing: 1.5,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -981,7 +995,7 @@ class _GiveSheetState extends State<_GiveSheet> {
               color: MysticColors.outlineVariant.withOpacity(0.3)),
 
           const SizedBox(height: 20),
-          Text('FROM',
+          Text(L10n.t('FROM'),
               style: labelStyle(10,
                   letterSpacing: 1.5,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -1009,7 +1023,7 @@ class _GiveSheetState extends State<_GiveSheet> {
                 .toList(),
           ),
           const SizedBox(height: 4),
-          Text('Available: $currency ${fmt.format(available)}',
+          Text('${L10n.t('Available')}: $currency ${fmt.format(available)}',
               style: labelStyle(10,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
 
@@ -1023,7 +1037,7 @@ class _GiveSheetState extends State<_GiveSheet> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            child: Text('Record',
+            child: Text(L10n.t('Record'),
                 style: headlineStyle(16,
                     italic: false,
                     weight: FontWeight.w700,
@@ -1073,13 +1087,13 @@ class _RateDialogState extends State<_RateDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: MysticColors.surfaceContainerLow,
-      title: Text('Giving rate',
+      title: Text(L10n.t('Giving rate'),
           style: headlineStyle(20, italic: true, weight: FontWeight.w700)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('What share of your income do you set aside?',
+          Text(L10n.t('What share of your income do you set aside?'),
               style: bodyStyle(14)),
           const SizedBox(height: 16),
           Row(
@@ -1119,7 +1133,7 @@ class _RateDialogState extends State<_RateDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('Cancel',
+          child: Text(L10n.t('Cancel'),
               style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
         ),
         TextButton(
@@ -1129,7 +1143,7 @@ class _RateDialogState extends State<_RateDialog> {
             if (pct == null || pct < 0 || pct > 100) return;
             Navigator.pop(context, pct / 100);
           },
-          child: Text('Save',
+          child: Text(L10n.t('Save'),
               style: bodyStyle(14,
                   weight: FontWeight.w700, color: MysticColors.primary)),
         ),
@@ -1153,20 +1167,23 @@ class _ArchivistNote extends StatelessWidget {
 
   String _message(NumberFormat fmt) {
     if (given <= 0 && remaining <= 0) {
-      return 'Record income to see what you have set aside for giving. '
-          'Anything you give is logged as a Tithe entry in your ledger.';
+      return L10n.t('Record income to see what you have set aside for giving. '
+          'Anything you give is logged as a Tithe entry in your ledger.');
     }
     if (given <= 0) {
-      return 'Nothing recorded yet for this period. '
-          '$currency ${fmt.format(remaining)} is set aside as owed — '
-          'tap Record Giving once you have given it.';
+      return '${L10n.t('Nothing recorded yet for this period.')} '
+          '$currency ${fmt.format(remaining)} '
+          '${L10n.t('is set aside as owed — tap Record Giving once you have '
+              'given it.')}';
     }
     if (remaining <= 0) {
-      return 'You have recorded $currency ${fmt.format(given)} in giving for '
-          'this period, meeting your commitment in full.';
+      return '${L10n.t('You have recorded')} $currency ${fmt.format(given)} '
+          '${L10n.t('in giving for this period, meeting your commitment in '
+              'full.')}';
     }
-    return 'You have given $currency ${fmt.format(given)} so far this period, '
-        'with $currency ${fmt.format(remaining)} still outstanding.';
+    return '${L10n.t('You have given')} $currency ${fmt.format(given)} '
+        '${L10n.t('so far this period, with')} $currency '
+        '${fmt.format(remaining)} ${L10n.t('still outstanding.')}';
   }
 
   @override
@@ -1189,7 +1206,7 @@ class _ArchivistNote extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Archivist's Note",
+                Text(L10n.t("Archivist's Note"),
                     style: headlineStyle(17,
                         italic: false, weight: FontWeight.w700)),
                 const SizedBox(height: 8),

@@ -1,4 +1,4 @@
-package com.example.mystic_ledger
+package com.mattathiasa.mysticledger
 
 import android.appwidget.AppWidgetManager
 import android.content.Context

@@ -15,7 +15,7 @@ class HomeWidgetService {
   /// receiver that [HomeWidget.updateWidget] resolves by name.
   static const String _providerName = 'BalanceWidgetProvider';
   static const String _qualifiedName =
-      'com.example.mystic_ledger.$_providerName';
+      'com.mattathiasa.mysticledger.$_providerName';
 
   /// The URI used by the widget's "Add Entry" button.
   static const String addEntryUri = 'mysticledger://addEntry';

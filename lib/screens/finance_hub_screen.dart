@@ -7,6 +7,7 @@ import '../widgets/mystic_app_bar.dart';
 import '../widgets/empty_state_card.dart';
 import '../widgets/account_edit_sheet.dart';
 import '../services/finance_service.dart';
+import '../services/l10n.dart';
 import '../models/account_model.dart';
 import 'transfer_screen.dart';
 import 'savings_screen.dart';
@@ -22,6 +23,11 @@ class FinanceHubScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: const MysticAppBar(),
@@ -36,14 +42,14 @@ class FinanceHubScreen extends StatelessWidget {
               children: [
                 // ── Header ─────────────────────────────────────────────
                 Text(
-                  'FINANCIAL INSTRUMENTS',
+                  L10n.t('FINANCIAL INSTRUMENTS'),
                   style: labelStyle(10,
                       letterSpacing: 2.0,
                       color:
                           MysticColors.onSurfaceVariant.withOpacity(0.7)),
                 ),
                 const SizedBox(height: 8),
-                Text('Finance',
+                Text(L10n.t('Finance'),
                     style:
                         headlineStyle(48, italic: true, weight: FontWeight.w900)),
                 const SizedBox(height: 32),
@@ -54,8 +60,8 @@ class FinanceHubScreen extends StatelessWidget {
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.swap_horiz_rounded,
-                        label: 'Transfer',
-                        subtitle: 'Move between vaults',
+                        label: L10n.t('Transfer'),
+                        subtitle: L10n.t('Move between vaults'),
                         color: MysticColors.primary,
                         bgColor: MysticColors.surfaceContainerLow,
                         rotation: -0.012,
@@ -68,8 +74,8 @@ class FinanceHubScreen extends StatelessWidget {
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.savings_outlined,
-                        label: 'Savings',
-                        subtitle: 'Vault deposits',
+                        label: L10n.t('Savings'),
+                        subtitle: L10n.t('Vault deposits'),
                         color: MysticColors.secondary,
                         bgColor: MysticColors.surfaceContainerHigh,
                         rotation: 0.012,
@@ -86,8 +92,8 @@ class FinanceHubScreen extends StatelessWidget {
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.handshake_outlined,
-                        label: 'Debts',
-                        subtitle: 'Track obligations',
+                        label: L10n.t('Debts'),
+                        subtitle: L10n.t('Track obligations'),
                         color: MysticColors.tertiary,
                         bgColor: MysticColors.surfaceContainer,
                         rotation: -0.008,
@@ -100,8 +106,8 @@ class FinanceHubScreen extends StatelessWidget {
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.add_card_outlined,
-                        label: 'Add Account',
-                        subtitle: 'Open new vault',
+                        label: L10n.t('Add Account'),
+                        subtitle: L10n.t('Open new vault'),
                         color: MysticColors.primary,
                         bgColor: MysticColors.surfaceContainerLow,
                         rotation: 0.008,
@@ -118,8 +124,8 @@ class FinanceHubScreen extends StatelessWidget {
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.assignment_outlined,
-                        label: 'Budgets',
-                        subtitle: 'Set spending limits',
+                        label: L10n.t('Budgets'),
+                        subtitle: L10n.t('Set spending limits'),
                         color: MysticColors.secondary,
                         bgColor: MysticColors.surfaceContainerHigh,
                         rotation: 0.004,
@@ -132,8 +138,8 @@ class FinanceHubScreen extends StatelessWidget {
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.history,
-                        label: 'Transfer Record',
-                        subtitle: 'History & reverse',
+                        label: L10n.t('Transfer Record'),
+                        subtitle: L10n.t('History & reverse'),
                         color: MysticColors.tertiary,
                         bgColor: MysticColors.surfaceContainer,
                         rotation: -0.006,
@@ -161,13 +167,13 @@ class FinanceHubScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('All Accounts',
+                    Text(L10n.t('All Accounts'),
                         style: headlineStyle(24,
                             italic: true, weight: FontWeight.w700)),
                     TextButton(
                       onPressed: () => Navigator.of(context)
                           .push(_slide(const AddAccountScreen())),
-                      child: Text('+ ADD',
+                      child: Text('+ ${L10n.t('ADD')}',
                           style: labelStyle(10,
                               letterSpacing: 1.5,
                               color: MysticColors.primary)),
@@ -323,11 +329,11 @@ class _SavingsSnapshot extends StatelessWidget {
                 children: [
                   Text(
                     summary.accounts.length > 1
-                        ? 'SAVINGS VAULTS'
-                        : 'SAVINGS VAULT',
+                        ? L10n.t('SAVINGS VAULTS')
+                        : L10n.t('SAVINGS VAULT'),
                     style: labelStyle(9,
                         letterSpacing: 1.5,
-                        color: Colors.white.withOpacity(0.7)),
+                        color: MysticColors.onPrimary.withOpacity(0.7)),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -338,23 +344,24 @@ class _SavingsSnapshot extends StatelessWidget {
                     style: headlineStyle(32,
                         italic: false,
                         weight: FontWeight.w900,
-                        color: Colors.white),
+                        color: MysticColors.onPrimary),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     summary.isEmpty
-                        ? 'Tap to open your first vault →'
-                        : 'Tap to view deposits →',
-                    style: bodyStyle(12, color: Colors.white.withOpacity(0.6))
-                        .copyWith(fontStyle: FontStyle.italic),
+                        ? L10n.t('Tap to open your first vault →')
+                        : L10n.t('Tap to view deposits →'),
+                    style:
+                        bodyStyle(12, color: MysticColors.onPrimary.withOpacity(0.6))
+                            .copyWith(fontStyle: FontStyle.italic),
                   ),
                 ],
               ),
             ),
-            const Opacity(
+            Opacity(
               opacity: 0.2,
               child: Icon(Icons.savings,
-                  size: 72, color: Colors.white),
+                  size: 72, color: MysticColors.onPrimary),
             ),
           ],
         ),
@@ -399,9 +406,9 @@ class _AccountsList extends StatelessWidget {
             ],
           ),
           child: active.isEmpty
-              ? const NoAccountsCard(
-                  headline: 'No active accounts',
-                  body: 'Add a vault to start recording against it.',
+              ? NoAccountsCard(
+                  headline: L10n.t('No active accounts'),
+                  body: L10n.t('Add a vault to start recording against it.'),
                 )
               : Column(
                   children: active.asMap().entries.map((e) {
@@ -471,7 +478,7 @@ class _AccountsList extends StatelessWidget {
         // Hidden accounts section
         if (inactive.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Text('HIDDEN ACCOUNTS',
+          Text(L10n.t('HIDDEN ACCOUNTS'),
               style: labelStyle(10,
                   letterSpacing: 2.0,
                   color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -535,7 +542,7 @@ class _AccountsList extends StatelessWidget {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: Text('RESTORE',
+                        child: Text(L10n.t('RESTORE'),
                             style: labelStyle(9,
                                 letterSpacing: 1.2,
                                 color: MysticColors.primary)),
@@ -584,12 +591,12 @@ class _DebtSnapshot extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Debt Overview',
+            Text(L10n.t('Debt Overview'),
                 style:
                     headlineStyle(24, italic: true, weight: FontWeight.w700)),
             TextButton(
               onPressed: onTap,
-              child: Text('VIEW ALL',
+              child: Text(L10n.t('VIEW ALL'),
                   style: labelStyle(10,
                       letterSpacing: 1.5, color: MysticColors.primary)),
             ),
@@ -600,7 +607,7 @@ class _DebtSnapshot extends StatelessWidget {
           children: [
             Expanded(
               child: _DebtStat(
-                label: 'I OWE',
+                label: L10n.t('I OWE'),
                 currency: currency,
                 count: iOweCount,
                 total: iOweTotal,
@@ -611,7 +618,7 @@ class _DebtSnapshot extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _DebtStat(
-                label: 'OWED TO ME',
+                label: L10n.t('OWED TO ME'),
                 currency: currency,
                 count: owedToMeCount,
                 total: owedToMeTotal,
@@ -672,7 +679,7 @@ class _DebtStat extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '$count pending',
+            '$count ${L10n.t('pending')}',
             style: labelStyle(9, letterSpacing: 0.5),
           ),
         ],

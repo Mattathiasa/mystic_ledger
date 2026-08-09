@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
+import '../services/l10n.dart';
 import '../services/finance_service.dart';
 import '../models/account_model.dart';
 import '../models/currency_model.dart';
@@ -78,8 +79,8 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '$name added to your vaults.',
-          style: bodyStyle(13, color: Colors.white),
+          '$name ${L10n.t('added to your vaults.')}',
+          style: bodyStyle(13, color: MysticColors.onSecondary),
         ),
         backgroundColor: MysticColors.secondary,
         behavior: SnackBarBehavior.floating,
@@ -90,6 +91,11 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
@@ -104,7 +110,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
             onPressed: () => Navigator.of(context).pop(),
           ),
           title: Text(
-            'Add Account',
+            L10n.t('Add Account'),
             style: headlineStyle(22, italic: true, weight: FontWeight.w700),
           ),
           bottom: PreferredSize(
@@ -123,13 +129,13 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'OPEN NEW VAULT',
+                    L10n.t('OPEN NEW VAULT'),
                     style: labelStyle(10,
                         letterSpacing: 2.0,
                         color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
                   ),
                   const SizedBox(height: 8),
-                  Text('New Account',
+                  Text(L10n.t('New Account'),
                       style: headlineStyle(40,
                           italic: true, weight: FontWeight.w900)),
                   const SizedBox(height: 32),
@@ -153,7 +159,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Account type selector
-                        Text('ACCOUNT TYPE',
+                        Text(L10n.t('ACCOUNT TYPE'),
                             style: labelStyle(9,
                                 letterSpacing: 1.5,
                                 color: MysticColors.onSurfaceVariant
@@ -171,7 +177,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
                         // Currency — set here because it is locked once the
                         // account has any entries recorded against it.
-                        Text('CURRENCY',
+                        Text(L10n.t('CURRENCY'),
                             style: labelStyle(9,
                                 letterSpacing: 1.5,
                                 color: MysticColors.onSurfaceVariant
@@ -213,7 +219,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
                         // Savings goal
                         if (_type == AccountType.savings) ...[
-                          Text('SAVINGS GOAL (OPTIONAL)',
+                          Text(L10n.t('SAVINGS GOAL (OPTIONAL)'),
                               style: labelStyle(9,
                                   letterSpacing: 1.5,
                                   color: MysticColors.onSurfaceVariant
@@ -238,7 +244,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                                   style: bodyStyle(16, weight: FontWeight.w600),
                                   decoration: InputDecoration(
                                     border: InputBorder.none,
-                                    hintText: 'e.g. 50000 for a laptop',
+                                    hintText: L10n.t('e.g. 50000 for a laptop'),
                                     hintStyle:
                                         bodyStyle(16, weight: FontWeight.w600)
                                             .copyWith(
@@ -264,7 +270,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                                     if (t == null || t.isEmpty) return null;
                                     final p = double.tryParse(t);
                                     if (p == null || p <= 0) {
-                                      return 'Enter a valid goal';
+                                      return L10n.t('Enter a valid goal');
                                     }
                                     return null;
                                   },
@@ -281,7 +287,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                         ],
 
                         // Account name
-                        Text('ACCOUNT NAME',
+                        Text(L10n.t('ACCOUNT NAME'),
                             style: labelStyle(9,
                                 letterSpacing: 1.5,
                                 color: MysticColors.onSurfaceVariant
@@ -293,7 +299,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                           textCapitalization: TextCapitalization.words,
                           decoration: InputDecoration(
                             border: InputBorder.none,
-                            hintText: 'e.g. CBE, Awash Bank...',
+                            hintText: L10n.t('e.g. CBE, Awash Bank...'),
                             hintStyle: bodyStyle(20, weight: FontWeight.w600)
                                 .copyWith(
                                     color: MysticColors.onSurface
@@ -312,14 +318,14 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                             ),
                           ),
                           validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Enter an account name'
+                              ? L10n.t('Enter an account name')
                               : null,
                         ),
                         const SizedBox(height: 20),
 
                         // Quick-pick suggestions
                         if (_type == AccountType.bank) ...[
-                          Text('QUICK PICK',
+                          Text(L10n.t('QUICK PICK'),
                               style: labelStyle(9,
                                   letterSpacing: 1.5,
                                   color: MysticColors.onSurfaceVariant
@@ -380,7 +386,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                             ),
                             child: Center(
                               child: Text(
-                                'Open Vault',
+                                L10n.t('Open Vault'),
                                 style: headlineStyle(20,
                                     italic: true,
                                     weight: FontWeight.w900,
@@ -411,11 +417,18 @@ class _TypeSelector extends StatelessWidget {
   const _TypeSelector({required this.selected, required this.onChanged});
 
   static const _options = [
-    (AccountType.bank,    'Bank',    Icons.account_balance_outlined),
-    (AccountType.mobile,  'Mobile',  Icons.account_balance_wallet_outlined),
-    (AccountType.cash,    'Cash',    Icons.payments_outlined),
-    (AccountType.savings, 'Savings', Icons.savings_outlined),
+    (AccountType.bank,    Icons.account_balance_outlined),
+    (AccountType.mobile,  Icons.account_balance_wallet_outlined),
+    (AccountType.cash,    Icons.payments_outlined),
+    (AccountType.savings, Icons.savings_outlined),
   ];
+
+  static String _label(AccountType t) => switch (t) {
+        AccountType.bank    => L10n.t('Bank'),
+        AccountType.mobile  => L10n.t('Mobile'),
+        AccountType.cash    => L10n.t('Cash'),
+        AccountType.savings => L10n.t('Savings'),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +441,8 @@ class _TypeSelector extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: _options.map((opt) {
-            final (type, label, icon) = opt;
+            final (type, icon) = opt;
+            final label = _label(type);
             final active = selected == type;
             return SizedBox(
               width: tileWidth,
@@ -458,7 +472,7 @@ class _TypeSelector extends StatelessWidget {
                               : MysticColors.onSurfaceVariant.withOpacity(0.4)),
                       const SizedBox(height: 6),
                       Text(
-                        label.toUpperCase(),
+                        L10n.t(label).toUpperCase(),
                         style: labelStyle(9,
                             letterSpacing: 1.0,
                             color: active

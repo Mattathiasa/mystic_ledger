@@ -47,8 +47,7 @@ class SmsCaptureService extends ChangeNotifier {
   /// Loads persisted state. Call once at app start.
   Future<void> init() async {
     _enabled = await SmsCaptureStore.isEnabled();
-    _drafts = await SmsCaptureStore.loadDrafts();
-    notifyListeners();
+    await _refreshDrafts();
   }
 
   Future<void> setEnabled(bool value) async {
@@ -103,13 +102,27 @@ class SmsCaptureService extends ChangeNotifier {
     await _refreshDrafts();
   }
 
-  /// Scans the inbox for past Telebirr alerts and queues them as drafts.
+  /// Every known bank's alert fingerprints — the source of truth the inbox
+  /// backfill scans with. Alerts may carry the brand in the body, the sender
+  /// field, or both, so each bank gets both patterns; [detectBank] does the
+  /// precise final filtering and signature dedup keeps the overlap harmless.
+  /// Adding a bank here (plus its parser) makes its alerts capturable.
+  static const List<(SmsColumn, String)> _backfillPatterns = [
+    (SmsColumn.BODY, '%telebirr%'),
+    (SmsColumn.ADDRESS, '%telebirr%'),
+    (SmsColumn.BODY, '%cbe%'),
+    (SmsColumn.ADDRESS, '%cbe%'),
+    (SmsColumn.BODY, '%awash%'),
+    (SmsColumn.ADDRESS, '%awash%'),
+  ];
+
+  /// Scans the inbox for past bank alerts and queues them as drafts.
   ///
-  /// Two targeted queries rather than one dump: alerts may carry the brand in
-  /// the body, the sender field, or both. Dedup signatures keep this safe even
-  /// if a message was already captured live. Returns how many were added, or
-  /// -1 when the inbox could not be read (permission missing or a platform
-  /// error) so callers can say so honestly instead of claiming "none found".
+  /// One query per fingerprint rather than one dump — and a single query
+  /// failing (some devices reject filters) never aborts the whole scan.
+  /// Returns how many were added, or -1 when the inbox could not be read
+  /// (permission missing or a platform error) so callers can say so honestly
+  /// instead of claiming "none found".
   Future<int> backfillInbox() async {
     if (!supported || !_enabled) return 0;
     // Asks on first use (or returns the current grant state); a scan without
@@ -119,33 +132,33 @@ class SmsCaptureService extends ChangeNotifier {
 
     try {
       final telephony = Telephony.instance;
-      // Alerts may carry the brand in the body, the sender field, or both;
-      // detectBank does the precise filtering once the candidates arrive.
-      final byTelebirr = await telephony.getInboxSms(
-        filter: SmsFilter.where(SmsColumn.BODY).like('%telebirr%'),
-      );
-      final byCbe = await telephony.getInboxSms(
-        filter: SmsFilter.where(SmsColumn.BODY).like('%cbe%'),
-      );
-      final byTelebirrSender = await telephony.getInboxSms(
-        filter: SmsFilter.where(SmsColumn.ADDRESS).equals('Telebirr'),
-      );
-      final byCbeSender = await telephony.getInboxSms(
-        filter: SmsFilter.where(SmsColumn.ADDRESS).equals('CBE'),
-      );
-
+      final seen = <String>{};
       var added = 0;
-      for (final m
-          in {...byTelebirr, ...byCbe, ...byTelebirrSender, ...byCbeSender}) {
-        final draft = await SmsCaptureStore.captureIncoming(
-          id: m.id?.toString(),
-          sender: m.address ?? '',
-          body: m.body ?? '',
-          date: m.date == null
-              ? null
-              : DateTime.fromMillisecondsSinceEpoch(m.date!),
-        );
-        if (draft != null) added++;
+      for (final (col, pattern) in _backfillPatterns) {
+        try {
+          final msgs = await telephony.getInboxSms(
+            filter: SmsFilter.where(col).like(pattern),
+          );
+          for (final m in msgs) {
+            final sig = smsSignature(
+              id: m.id?.toString(),
+              sender: m.address ?? '',
+              body: m.body ?? '',
+            );
+            if (!seen.add(sig)) continue; // same row via an overlapping query
+            final draft = await SmsCaptureStore.captureIncoming(
+              id: m.id?.toString(),
+              sender: m.address ?? '',
+              body: m.body ?? '',
+              date: m.date == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(m.date!),
+            );
+            if (draft != null) added++;
+          }
+        } catch (_) {
+          // One pattern failing must not abort the scan.
+        }
       }
       if (added > 0) await _refreshDrafts();
       return added;
@@ -174,6 +187,10 @@ class SmsCaptureService extends ChangeNotifier {
   }
 
   Future<void> _refreshDrafts() async {
+    // Silently drop junk that slipped in before the skip rule existed (OTPs,
+    // promo blasts, balance notices) so the queue only holds recordable
+    // entries.
+    await SmsCaptureStore.pruneUnparsed();
     _drafts = await SmsCaptureStore.loadDrafts();
     notifyListeners();
   }

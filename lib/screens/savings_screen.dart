@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../services/l10n.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/empty_state_card.dart';
@@ -17,6 +18,11 @@ class SavingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -29,7 +35,7 @@ class SavingsScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Savings Vault',
+          L10n.t('Savings Vault'),
           style: headlineStyle(22, italic: true, weight: FontWeight.w700),
         ),
         bottom: PreferredSize(
@@ -48,15 +54,15 @@ class SavingsScreen extends StatelessWidget {
           // Offer the way to make one rather than a 0.00 hero above an empty
           // list with a deposit button that has nowhere to deposit to.
           if (summary.isEmpty) {
-            return const SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(24, 32, 24, 40),
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 40),
               child: NoAccountsCard(
-                headline: 'No vault sealed yet',
-                body: 'A savings vault is kept apart from your spending '
+                headline: L10n.t('No vault sealed yet'),
+                body: L10n.t('A savings vault is kept apart from your spending '
                     'accounts, so what you set aside stays set aside. Open one '
-                    'to start.',
+                    'to start.'),
                 presetType: AccountType.savings,
-                ctaLabel: 'Open a vault',
+                ctaLabel: L10n.t('Open a vault'),
               ),
             );
           }
@@ -90,7 +96,7 @@ class SavingsScreen extends StatelessWidget {
 
                     // ── History ────────────────────────────────────────────
                     Text(
-                      'DEPOSIT HISTORY',
+                      L10n.t('DEPOSIT HISTORY'),
                       style: labelStyle(10,
                           letterSpacing: 2.0,
                           color: MysticColors.onSurfaceVariant.withOpacity(0.7)),
@@ -182,13 +188,13 @@ class _SavingsHeroCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            const Positioned(
+            Positioned(
               right: -10,
               top: -10,
               child: Opacity(
                 opacity: 0.12,
                 child: Icon(Icons.savings,
-                    size: 130, color: Colors.white),
+                    size: 130, color: MysticColors.onPrimary),
               ),
             ),
             Column(
@@ -197,22 +203,23 @@ class _SavingsHeroCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: MysticColors.onPrimary.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     summary.accounts.length > 1
-                        ? '${summary.accounts.length} SAVINGS VAULTS'
-                        : 'SAVINGS VAULT',
+                        ? '${summary.accounts.length} ${L10n.t('SAVINGS VAULTS')}'
+                        : L10n.t('SAVINGS VAULT'),
                     style: labelStyle(9,
-                        letterSpacing: 1.5, color: Colors.white.withOpacity(0.9)),
+                        letterSpacing: 1.5,
+                        color: MysticColors.onPrimary.withOpacity(0.9)),
                   ),
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Total Saved',
+                  L10n.t('Total Saved'),
                   style: bodyStyle(14,
-                          color: Colors.white.withOpacity(0.7))
+                          color: MysticColors.onPrimary.withOpacity(0.7))
                       .copyWith(fontStyle: FontStyle.italic),
                 ),
                 const SizedBox(height: 4),
@@ -224,16 +231,16 @@ class _SavingsHeroCard extends StatelessWidget {
                   style: headlineStyle(40,
                       italic: false,
                       weight: FontWeight.w900,
-                      color: Colors.white),
+                      color: MysticColors.onPrimary),
                 ),
                 // A sum across currencies is an estimate at today's rates, and
                 // it should say so rather than read as an exact figure.
                 if (summary.converted && !hidden) ...[
                   const SizedBox(height: 6),
                   Text(
-                    'Converted from '
+                    '${L10n.t('Converted from')} '
                     '${summary.accounts.map((a) => a.currency).toSet().length} '
-                    'currencies at today\'s rates.',
+                    '${L10n.t("currencies at today's rates.")}',
                     style: labelStyle(9,
                         letterSpacing: 0.5,
                         color: Colors.white.withOpacity(0.75)),
@@ -251,7 +258,7 @@ class _SavingsHeroCard extends StatelessWidget {
                 ],
                 const SizedBox(height: 12),
                 Text(
-                  '"Every coin sealed in the vault is a stone in the fortress of your future."',
+                  L10n.t('"Every coin sealed in the vault is a stone in the fortress of your future."'),
                   style: bodyStyle(12, color: Colors.white.withOpacity(0.7))
                       .copyWith(fontStyle: FontStyle.italic),
                 ),
@@ -299,7 +306,7 @@ class _GoalProgress extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'GOAL',
+              L10n.t('GOAL'),
               style: labelStyle(9,
                   letterSpacing: 1.5, color: Colors.white.withOpacity(0.8)),
             ),
@@ -307,7 +314,7 @@ class _GoalProgress extends StatelessWidget {
               hidden
                   ? '••••'
                   : '${(pct * 100).toStringAsFixed(0)}% · '
-                      '${currency} ${fmt.format(target)}',
+                      '$currency ${fmt.format(target)}',
               style: labelStyle(9,
                   letterSpacing: 0.8, color: Colors.white.withOpacity(0.9)),
             ),
@@ -328,10 +335,11 @@ class _GoalProgress extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           achieved
-              ? 'Goal reached — the vault is sealed.'
+              ? L10n.t('Goal reached — the vault is sealed.')
               : hidden
                   ? ''
-                  : '${currency} ${fmt.format(saved)} of ${fmt.format(target)} saved',
+                  : '$currency ${fmt.format(saved)} ${L10n.t('of')} '
+                      '${fmt.format(target)} ${L10n.t('saved')}',
           style: labelStyle(9,
               letterSpacing: 0.5, color: Colors.white.withOpacity(0.75)),
         ),
@@ -437,7 +445,8 @@ class _HistoryList extends StatelessWidget {
           final isDeposit = svc.isSavingsAccount(t.toAccountId);
           final fromName = svc.findAccount(t.fromAccountId)?.name ?? t.fromAccountId;
           final toName   = svc.findAccount(t.toAccountId)?.name   ?? t.toAccountId;
-          final dateFmt  = DateFormat('MMM d, yyyy · h:mm a');
+          final dateFmt  = DateFormat('MMM d, yyyy · h:mm a',
+              L10n.instance.isAmharic ? 'am' : null);
 
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -476,8 +485,8 @@ class _HistoryList extends StatelessWidget {
                     children: [
                       Text(
                         isDeposit
-                            ? 'Deposit from $fromName'
-                            : 'Withdrawal to $toName',
+                            ? '${L10n.t('Deposit from')} $fromName'
+                            : '${L10n.t('Withdrawal to')} $toName',
                         style: bodyStyle(14, weight: FontWeight.w600),
                       ),
                       Text(
@@ -524,7 +533,7 @@ class _EmptyHistory extends StatelessWidget {
                 size: 52, color: MysticColors.outlineVariant),
             const SizedBox(height: 12),
             Text(
-              'No deposits yet',
+              L10n.t('No deposits yet'),
               style: headlineStyle(15,
                   italic: true,
                   weight: FontWeight.w600,
@@ -532,7 +541,7 @@ class _EmptyHistory extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Tap the button below to make your first deposit.',
+              L10n.t('Tap the button below to make your first deposit.'),
               style:
                   bodyStyle(12, color: MysticColors.onSurfaceVariant.withOpacity(0.6))
                       .copyWith(fontStyle: FontStyle.italic),
@@ -578,7 +587,7 @@ class _DepositFab extends StatelessWidget {
           children: [
             Icon(Icons.add, color: MysticColors.onPrimary, size: 22),
             const SizedBox(width: 8),
-            Text('DEPOSIT',
+            Text(L10n.t('DEPOSIT'),
                 style: labelStyle(11,
                     letterSpacing: 1.5, color: MysticColors.onPrimary)),
           ],
@@ -681,7 +690,7 @@ class _DepositSheetState extends State<_DepositSheet> {
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
         decoration: BoxDecoration(
           color: MysticColors.surfaceContainerLow,
-          borderRadius: BorderRadius.only(
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(28),
             topRight: Radius.circular(28),
           ),
@@ -704,7 +713,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Deposit to Savings',
+              Text(L10n.t('Deposit to Savings'),
                   style: headlineStyle(24, italic: true, weight: FontWeight.w900)),
               const SizedBox(height: 24),
 
@@ -713,9 +722,9 @@ class _DepositSheetState extends State<_DepositSheet> {
               // pick, and the picker plus Save would both be inert.
               if (spendable.isEmpty) ...[
                 Text(
-                  'A deposit has to come from somewhere. Add a spending '
-                  'account — bank, mobile money or cash — and it will show up '
-                  'here.',
+                  L10n.t('A deposit has to come from somewhere. Add a spending '
+                      'account — bank, mobile money or cash — and it will show up '
+                      'here.'),
                   style: bodyStyle(13,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.8)),
                 ),
@@ -734,7 +743,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                       color: MysticColors.primary,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Text('ADD AN ACCOUNT',
+                    child: Text(L10n.t('ADD AN ACCOUNT'),
                         style: labelStyle(11,
                             letterSpacing: 1.5,
                             color: MysticColors.onPrimary)),
@@ -743,7 +752,7 @@ class _DepositSheetState extends State<_DepositSheet> {
               ] else ...[
 
               // From account
-              Text('FROM ACCOUNT',
+              Text(L10n.t('FROM ACCOUNT'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -776,7 +785,7 @@ class _DepositSheetState extends State<_DepositSheet> {
               // Which vault the money lands in. Only a real choice once there
               // is more than one — otherwise it's a dropdown with one option.
               if (vaults.length > 1) ...[
-                Text('TO VAULT',
+                Text(L10n.t('TO VAULT'),
                     style: labelStyle(9,
                         letterSpacing: 1.5,
                         color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -809,7 +818,7 @@ class _DepositSheetState extends State<_DepositSheet> {
               ],
 
               // Amount
-              Text('AMOUNT',
+              Text(L10n.t('AMOUNT'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -848,9 +857,13 @@ class _DepositSheetState extends State<_DepositSheet> {
                         isDense: true,
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Enter an amount';
+                        if (v == null || v.isEmpty) {
+                          return L10n.t('Enter an amount');
+                        }
                         final p = double.tryParse(v.replaceAll(',', ''));
-                        if (p == null || p <= 0) return 'Enter a valid amount';
+                        if (p == null || p <= 0) {
+                          return L10n.t('Enter a valid amount');
+                        }
                         return null;
                       },
                     ),
@@ -865,7 +878,7 @@ class _DepositSheetState extends State<_DepositSheet> {
               // Fee (optional) — mirror of the Transfer screen's fee field.
               // A deposit can carry a bank/service charge just like any other
               // transfer; leaving it out would understate what left the source.
-              Text('TRANSFER FEE / SERVICE CHARGE (OPTIONAL)',
+              Text(L10n.t('TRANSFER FEE / SERVICE CHARGE (OPTIONAL)'),
                   style: labelStyle(9,
                       letterSpacing: 1.5,
                       color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -894,7 +907,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                           color: MysticColors.tertiary),
                       decoration: InputDecoration(
                         border: InputBorder.none,
-                        hintText: '0.00  (bank/service fee)',
+                        hintText: L10n.t('0.00  (bank/service fee)'),
                         hintStyle: bodyStyle(14,
                             color: MysticColors.onSurface.withOpacity(0.2)),
                         contentPadding: EdgeInsets.zero,
@@ -934,7 +947,7 @@ class _DepositSheetState extends State<_DepositSheet> {
                   ),
                   child: Center(
                     child: Text(
-                      'Seal in Vault',
+                      L10n.t('Seal in Vault'),
                       style: headlineStyle(18,
                           italic: true,
                           weight: FontWeight.w900,

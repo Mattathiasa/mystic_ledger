@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/l10n.dart';
 import 'transaction.dart';
 import 'currency_model.dart';
 
@@ -7,10 +8,10 @@ enum RecurrenceFrequency { daily, weekly, monthly, yearly }
 
 extension RecurrenceFrequencyDisplay on RecurrenceFrequency {
   String get label => switch (this) {
-        RecurrenceFrequency.daily   => 'Daily',
-        RecurrenceFrequency.weekly  => 'Weekly',
-        RecurrenceFrequency.monthly => 'Monthly',
-        RecurrenceFrequency.yearly  => 'Yearly',
+        RecurrenceFrequency.daily   => L10n.t('Daily'),
+        RecurrenceFrequency.weekly  => L10n.t('Weekly'),
+        RecurrenceFrequency.monthly => L10n.t('Monthly'),
+        RecurrenceFrequency.yearly  => L10n.t('Yearly'),
       };
 }
 

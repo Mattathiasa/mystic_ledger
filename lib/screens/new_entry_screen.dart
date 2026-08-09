@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/app_feedback.dart';
 import '../widgets/empty_state_card.dart';
 import '../services/finance_service.dart';
+import '../services/l10n.dart';
 import '../services/sms_parser.dart';
 import '../models/transaction.dart';
 import '../models/account_model.dart';
+import '../widgets/entry_tags_splits.dart';
 
 /// Modal screen — slides up from the bottom when tapping ADD ENTRY.
 ///
@@ -35,6 +36,12 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   final _noteCtrl   = TextEditingController();
   final _feeCtrl    = TextEditingController();
 
+  // ── Tags & splits ───────────────────────────────────────────────────────
+  final _tagCtrl = TextEditingController();
+  final List<String> _tags = [];
+  bool _splitEnabled = false;
+  final List<SplitDraft> _splitDrafts = [];
+
   TransactionType    _type     = TransactionType.expense;
   TransactionCategory _category = TransactionCategory.other;
   String? _accountId; // set to first spendable account on first build
@@ -53,6 +60,15 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
       _type      = e.type;
       _category  = e.category;
       _accountId = e.accountId;
+      _tags.addAll(e.tags);
+      if (e.splits.isNotEmpty) {
+        _splitEnabled = true;
+        for (final s in e.splits) {
+          final d = SplitDraft(s.category)..amountCtrl.text =
+              s.amount.toStringAsFixed(2);
+          _splitDrafts.add(d);
+        }
+      }
       return;
     }
 
@@ -99,7 +115,58 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
     _titleCtrl.dispose();
     _noteCtrl.dispose();
     _feeCtrl.dispose();
+    _tagCtrl.dispose();
+    for (final d in _splitDrafts) {
+      d.amountCtrl.dispose();
+    }
     super.dispose();
+  }
+
+  void _addTag() {
+    final raw = _tagCtrl.text.trim().toLowerCase();
+    if (raw.isEmpty) return;
+    if (!_tags.contains(raw)) _tags.add(raw);
+    _tagCtrl.clear();
+    setState(() {});
+  }
+
+  void _addSplitRow() {
+    setState(() => _splitDrafts.add(SplitDraft(_category)));
+  }
+
+  void _removeSplitRow(int index) {
+    final d = _splitDrafts.removeAt(index);
+    d.amountCtrl.dispose();
+    setState(() {});
+  }
+
+  /// What is currently typed into the amount field.
+  double get _currentAmount =>
+      double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
+
+  /// Sum of the current split lines, or null when any line is blank/garbage.
+  double? get _splitSum {
+    var sum = 0.0;
+    for (final d in _splitDrafts) {
+      final v = double.tryParse(d.amountCtrl.text.replaceAll(',', ''));
+      if (v == null) return null;
+      sum += v;
+    }
+    return sum;
+  }
+
+  /// Builds the split list for saving. Null when the user hasn't split.
+  List<TransactionSplit>? _buildSplits(double total) {
+    if (!_splitEnabled || _splitDrafts.isEmpty) return null;
+    final sum = _splitSum;
+    // Must be numeric and match the entry amount — a split that doesn't add
+    // up would silently misreport every category.
+    if (sum == null || (sum - total).abs() > 0.005) return null;
+    return _splitDrafts
+        .map((d) => TransactionSplit(
+            category: d.category,
+            amount: double.parse(d.amountCtrl.text.replaceAll(',', ''))))
+        .toList();
   }
 
   bool _saving = false;
@@ -112,6 +179,22 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
 
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
     if (amount <= 0) return;
+
+    // Splits must add up to the entry amount; refuse with a clear error
+    // rather than silently misreporting categories.
+    final splits = _buildSplits(amount);
+    if (_splitEnabled && splits == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            L10n.t('Split amounts must add up to the entry total.'),
+            style: bodyStyle(13, color: MysticColors.onTertiary)),
+        backgroundColor: MysticColors.tertiary,
+        behavior: SnackBarBehavior.floating,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+      return;
+    }
 
     setState(() => _saving = true);
 
@@ -151,6 +234,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
             liveRate: svc.settings.rateFor(currency),
           ),
           fee: fee,
+          tags: List.unmodifiable(_tags),
+          splits: splits ?? const [],
         ),
       ),
     );
@@ -159,6 +244,11 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     final svc     = context.watch<FinanceService>();
     final accounts = _pickerAccounts(svc);
 
@@ -173,7 +263,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
 
     final today     = DateTime.now();
     final dayLabel  = _ordinalDay(today.day);
-    final monthYear = DateFormat('MMMM, yyyy').format(today);
+    final monthYear = L10n.date(today, 'MMMM, yyyy');
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -196,7 +286,9 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _isEdit ? 'AMEND RECORD' : 'NEW RECORD',
+                              _isEdit
+                                  ? L10n.t('AMEND RECORD')
+                                  : L10n.t('NEW RECORD'),
                               style: labelStyle(10,
                                   letterSpacing: 2.0,
                                   color: MysticColors.onSurfaceVariant
@@ -207,7 +299,9 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                               angle: -0.017,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                _isEdit ? 'Revise Entry' : 'Write Entry',
+                                _isEdit
+                                    ? L10n.t('Revise Entry')
+                                    : L10n.t('Write Entry'),
                                 style: headlineStyle(32,
                                     italic: true, weight: FontWeight.w900),
                               ),
@@ -219,7 +313,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '$dayLabel Moon',
+                            '$dayLabel ${L10n.t('Moon')}',
                             style: headlineStyle(16,
                                 italic: true,
                                 weight: FontWeight.w700,
@@ -242,10 +336,11 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   // against, and Save would validate and then silently do
                   // nothing. Show the way out instead of half a dead form.
                   if (accounts.isEmpty)
-                    const NoAccountsCard(
-                      headline: 'Nowhere to file this',
-                      body: 'An entry has to be recorded against an account. '
-                          'Add the one this money moved through and come back.',
+                    NoAccountsCard(
+                      headline: L10n.t('Nowhere to file this'),
+                      body: L10n.t('An entry has to be recorded against an '
+                          'account. Add the one this money moved through and '
+                          'come back.'),
                     )
                   else
                   // ── Form card ────────────────────────────────────────────
@@ -321,9 +416,10 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'This vault holds $entryCurrency. The amount '
-                                  'will be recorded as $entryCurrency, not '
-                                  'converted from '
+                                  '${L10n.t('This vault holds')} $entryCurrency. '
+                                  '${L10n.t('The amount will be recorded as')} '
+                                  '$entryCurrency, '
+                                  '${L10n.t('not converted from')} '
                                   '${widget.existing!.currency}.',
                                   style: bodyStyle(12,
                                       color: MysticColors.tertiary),
@@ -336,11 +432,55 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                         _divider(),
                         const SizedBox(height: 24),
                         _NoteField(controller: _noteCtrl),
+
+                        // ── Tags ──────────────────────────────────────────
+                        const SizedBox(height: 24),
+                        _divider(),
+                        const SizedBox(height: 24),
+                        TagsField(
+                          controller: _tagCtrl,
+                          tags: _tags,
+                          onAdd: _addTag,
+                          onRemove: (i) {
+                            setState(() => _tags.removeAt(i));
+                          },
+                        ),
+
+                        // ── Split across categories ────────────────────────
+                        if (_type == TransactionType.expense) ...[
+                          const SizedBox(height: 24),
+                          _divider(),
+                          const SizedBox(height: 24),
+                          SplitToggle(
+                            enabled: _splitEnabled,
+                            onChanged: (v) => setState(() {
+                              _splitEnabled = v;
+                              if (!v) _splitDrafts.clear();
+                            }),
+                          ),
+                          if (_splitEnabled) ...[
+                            const SizedBox(height: 16),
+                            SplitEditor(
+                              drafts: _splitDrafts,
+                              onChanged: () => setState(() {}),
+                              onAdd: _addSplitRow,
+                              onRemove: _removeSplitRow,
+                              onCategory: (i, c) => setState(() {
+                                _splitDrafts[i].category = c;
+                              }),
+                              total: _currentAmount,
+                              sum: _splitSum,
+                            ),
+                          ],
+                        ],
+
                         const SizedBox(height: 32),
                         _SaveButton(
                           onTap: _save,
                           busy: _saving,
-                          label: _isEdit ? 'Save Changes' : 'Save Entry',
+                          label: _isEdit
+                              ? L10n.t('Save Changes')
+                              : L10n.t('Save Entry'),
                         ),
                       ],
                     ),
@@ -351,7 +491,9 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text(
-                        _isEdit ? 'DISCARD CHANGES' : 'DISCARD ENTRY',
+                        _isEdit
+                            ? L10n.t('DISCARD CHANGES')
+                            : L10n.t('DISCARD ENTRY'),
                         style: labelStyle(11,
                             letterSpacing: 1.5,
                             color: MysticColors.onSurfaceVariant.withOpacity(0.5)),
@@ -395,7 +537,7 @@ class _AmountField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('AMOUNT',
+        Text(L10n.t('AMOUNT'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -429,9 +571,11 @@ class _AmountField extends StatelessWidget {
                   isDense: true,
                 ),
                 validator: (v) {
-                  if (v == null || v.isEmpty) return 'Enter an amount';
+                  if (v == null || v.isEmpty) return L10n.t('Enter an amount');
                   final parsed = double.tryParse(v.replaceAll(',', ''));
-                  if (parsed == null || parsed <= 0) return 'Enter a valid amount';
+                  if (parsed == null || parsed <= 0) {
+                    return L10n.t('Enter a valid amount');
+                  }
                   return null;
                 },
               ),
@@ -458,7 +602,7 @@ class _FeeField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('FEE / SERVICE CHARGE (OPTIONAL)',
+        Text(L10n.t('FEE / SERVICE CHARGE (OPTIONAL)'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -510,7 +654,7 @@ class _TitleField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('DESCRIPTION',
+        Text(L10n.t('DESCRIPTION'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -521,14 +665,15 @@ class _TitleField extends StatelessWidget {
           textCapitalization: TextCapitalization.sentences,
           decoration: InputDecoration(
             border: InputBorder.none,
-            hintText: 'What was this entry for?',
+            hintText: L10n.t('What was this entry for?'),
             hintStyle: bodyStyle(18, weight: FontWeight.w600)
                 .copyWith(color: MysticColors.onSurface.withOpacity(0.25)),
             contentPadding: const EdgeInsets.only(bottom: 8),
             isDense: true,
           ),
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Enter a description' : null,
+          validator: (v) => (v == null || v.trim().isEmpty)
+              ? L10n.t('Enter a description')
+              : null,
         ),
         Container(height: 1.5, color: MysticColors.outlineVariant.withOpacity(0.3)),
       ],
@@ -548,7 +693,7 @@ class _TypeSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('TYPE',
+        Text(L10n.t('TYPE'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -557,7 +702,7 @@ class _TypeSelector extends StatelessWidget {
           children: [
             Expanded(
               child: _TypeCard(
-                label: 'Expense',
+                label: L10n.t('Expense'),
                 icon: Icons.remove_circle_outline,
                 selected: selected == TransactionType.expense,
                 activeColor: MysticColors.tertiary,
@@ -568,7 +713,7 @@ class _TypeSelector extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _TypeCard(
-                label: 'Income',
+                label: L10n.t('Income'),
                 icon: Icons.add_circle_outline,
                 selected: selected == TransactionType.income,
                 activeColor: MysticColors.secondary,
@@ -690,7 +835,7 @@ class _CategoryPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('CATEGORY',
+        Text(L10n.t('CATEGORY'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -753,7 +898,7 @@ class _AccountPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ACCOUNT',
+        Text(L10n.t('ACCOUNT'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -785,7 +930,9 @@ class _AccountPicker extends StatelessWidget {
                     // A removed account only appears here because an entry
                     // being edited still points at it; label it so the user
                     // knows why a deleted vault is in the list.
-                    child: Text(a.isActive ? a.name : '${a.name} (removed)'),
+                    child: Text(a.isActive
+                        ? a.name
+                        : '${a.name} (${L10n.t('removed')})'),
                   ))
               .toList(),
         ),
@@ -805,7 +952,7 @@ class _NoteField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('NOTE (OPTIONAL)',
+        Text(L10n.t('NOTE (OPTIONAL)'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.6))),
@@ -818,7 +965,7 @@ class _NoteField extends StatelessWidget {
               .copyWith(fontStyle: FontStyle.italic),
           decoration: InputDecoration(
             border: InputBorder.none,
-            hintText: 'A brief annotation for the archive...',
+            hintText: L10n.t('A brief annotation for the archive...'),
             hintStyle: bodyStyle(14, color: MysticColors.onSurface.withOpacity(0.2))
                 .copyWith(fontStyle: FontStyle.italic),
             contentPadding: const EdgeInsets.only(bottom: 8),
@@ -847,7 +994,7 @@ class _SaveButton extends StatelessWidget {
   const _SaveButton({
     required this.onTap,
     this.busy = false,
-    this.label = 'Save Entry',
+    this.label = '',
   });
 
   @override
@@ -874,14 +1021,14 @@ class _SaveButton extends StatelessWidget {
         ),
         child: Center(
           child: busy
-              ? const SizedBox(
+              ? SizedBox(
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2),
+                      color: MysticColors.onPrimary, strokeWidth: 2),
                 )
               : Text(
-                  label,
+                  label.isEmpty ? L10n.t('Save Entry') : label,
                   style: headlineStyle(20,
                       italic: true,
                       weight: FontWeight.w900,

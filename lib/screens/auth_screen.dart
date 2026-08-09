@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
+import '../services/l10n.dart';
 import '../widgets/app_theme.dart';
 
 /// Login / Sign-Up screen shown when no user is authenticated.
@@ -79,13 +80,13 @@ class _AuthScreenState extends State<AuthScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: MysticColors.surfaceContainerLow,
-        title: Text('Reset Password',
+        title: Text(L10n.t('Reset Password'),
             style: headlineStyle(20, italic: true, weight: FontWeight.w700)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Enter your email and we\'ll send a reset link.',
+            Text(L10n.t('Enter your email and we\'ll send a reset link.'),
                 style: bodyStyle(14)),
             const SizedBox(height: 16),
             TextField(
@@ -110,7 +111,7 @@ class _AuthScreenState extends State<AuthScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel',
+            child: Text(L10n.t('Cancel'),
                 style: bodyStyle(14, color: MysticColors.onSurfaceVariant)),
           ),
           TextButton(
@@ -126,8 +127,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 navigator.pop();
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text('Reset link sent to $email',
-                        style: bodyStyle(13, color: Colors.white)),
+                    content: Text('${L10n.t('Reset link sent to')} $email',
+                        style: bodyStyle(13, color: MysticColors.onSecondary)),
                     backgroundColor: MysticColors.secondary,
                     behavior: SnackBarBehavior.floating,
                     shape: RoundedRectangleBorder(
@@ -140,7 +141,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 setState(() => _error = AuthService.friendlyError(e));
               }
             },
-            child: Text('Send Link',
+            child: Text(L10n.t('Send Link'),
                 style: bodyStyle(14,
                     weight: FontWeight.w700, color: MysticColors.primary)),
           ),
@@ -167,7 +168,8 @@ class _AuthScreenState extends State<AuthScreen> {
     } on FirebaseAuthException catch (e) {
       setState(() => _error = AuthService.friendlyError(e));
     } catch (_) {
-      setState(() => _error = 'Google sign-in failed. Please try again.');
+      setState(
+          () => _error = L10n.t('Google sign-in failed. Please try again.'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -175,6 +177,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
@@ -205,15 +212,17 @@ class _AuthScreenState extends State<AuthScreen> {
                       _Bookmark(),
                       const SizedBox(height: 32),
                       Text(
-                        _isSignUp ? 'Begin Your\nLedger' : 'Welcome\nBack',
+                        _isSignUp
+                            ? L10n.t('Begin Your\nLedger')
+                            : L10n.t('Welcome\nBack'),
                         style: headlineStyle(44,
                             italic: true, weight: FontWeight.w900),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         _isSignUp
-                            ? 'CREATE YOUR ARCHIVIST ACCOUNT'
-                            : 'SIGN IN TO YOUR GRIMOIRE',
+                            ? L10n.t('CREATE YOUR ARCHIVIST ACCOUNT')
+                            : L10n.t('SIGN IN TO YOUR GRIMOIRE'),
                         style: labelStyle(10,
                             letterSpacing: 2.0,
                             color: MysticColors.onSurfaceVariant
@@ -243,16 +252,16 @@ class _AuthScreenState extends State<AuthScreen> {
                           children: [
                             // Name (sign-up only)
                             if (_isSignUp) ...[
-                              const _FieldLabel('FULL NAME'),
+                              _FieldLabel(L10n.t('FULL NAME')),
                               const SizedBox(height: 8),
                               _InputField(
                                 controller: _nameCtrl,
-                                hint: 'Your archivist name',
+                                hint: L10n.t('Your archivist name'),
                                 textCapitalization:
                                     TextCapitalization.words,
                                 validator: (v) =>
                                     (v == null || v.trim().isEmpty)
-                                        ? 'Enter your name'
+                                        ? L10n.t('Enter your name')
                                         : null,
                               ),
                               const SizedBox(height: 24),
@@ -261,7 +270,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             ],
 
                             // Email
-                            const _FieldLabel('EMAIL'),
+                            _FieldLabel(L10n.t('EMAIL')),
                             const SizedBox(height: 8),
                             _InputField(
                               controller: _emailCtrl,
@@ -269,10 +278,10 @@ class _AuthScreenState extends State<AuthScreen> {
                               keyboardType: TextInputType.emailAddress,
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty) {
-                                  return 'Enter your email';
+                                  return L10n.t('Enter your email');
                                 }
                                 if (!v.contains('@')) {
-                                  return 'Enter a valid email';
+                                  return L10n.t('Enter a valid email');
                                 }
                                 return null;
                               },
@@ -282,7 +291,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             const SizedBox(height: 24),
 
                             // Password
-                            const _FieldLabel('PASSWORD'),
+                            _FieldLabel(L10n.t('PASSWORD')),
                             const SizedBox(height: 8),
                             _PasswordField(
                               controller: _passCtrl,
@@ -291,10 +300,11 @@ class _AuthScreenState extends State<AuthScreen> {
                                   setState(() => _obscure = !_obscure),
                               validator: (v) {
                                 if (v == null || v.isEmpty) {
-                                  return 'Enter your password';
+                                  return L10n.t('Enter your password');
                                 }
                                 if (_isSignUp && v.length < 6) {
-                                  return 'At least 6 characters required';
+                                  return L10n.t(
+                                      'At least 6 characters required');
                                 }
                                 return null;
                               },
@@ -308,7 +318,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 child: GestureDetector(
                                   onTap: _forgotPassword,
                                   child: Text(
-                                    'Forgot password?',
+                                    L10n.t('Forgot password?'),
                                     style: bodyStyle(13,
                                         color: MysticColors.primary,
                                         weight: FontWeight.w600),
@@ -353,8 +363,8 @@ class _AuthScreenState extends State<AuthScreen> {
                                     children: [
                                       _SubmitButton(
                                         label: _isSignUp
-                                            ? 'Open the Ledger'
-                                            : 'Enter the Archive',
+                                            ? L10n.t('Open the Ledger')
+                                            : L10n.t('Enter the Archive'),
                                         onTap: _submit,
                                       ),
                                       const SizedBox(height: 16),
@@ -375,8 +385,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         children: [
                           Text(
                             _isSignUp
-                                ? 'Already have an account?'
-                                : 'No account yet?',
+                                ? L10n.t('Already have an account?')
+                                : L10n.t('No account yet?'),
                             style: bodyStyle(13,
                                 color: MysticColors.onSurfaceVariant),
                           ),
@@ -386,7 +396,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               _error = null;
                             }),
                             child: Text(
-                              _isSignUp ? 'Sign In' : 'Sign Up',
+                              _isSignUp ? L10n.t('Sign In') : L10n.t('Sign Up'),
                               style: bodyStyle(13,
                                       weight: FontWeight.w700,
                                       color: MysticColors.primary)
@@ -616,7 +626,7 @@ class _OrDivider extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
-            'OR',
+            L10n.t('OR'),
             style: labelStyle(9,
                 letterSpacing: 1.5,
                 color: MysticColors.onSurfaceVariant.withOpacity(0.5)),
@@ -680,7 +690,7 @@ class _GoogleButton extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              'Continue with Google',
+              L10n.t('Continue with Google'),
               style: bodyStyle(15, weight: FontWeight.w600),
             ),
           ],

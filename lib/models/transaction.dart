@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../services/l10n.dart';
 import 'currency_model.dart';
 
 enum TransactionType { income, expense }
@@ -39,44 +40,44 @@ extension TransactionCategoryDisplay on TransactionCategory {
   /// Plain label — used in chips, filters, and pickers.
   String get label {
     switch (this) {
-      case TransactionCategory.food:          return 'Food';
-      case TransactionCategory.transport:     return 'Transport';
-      case TransactionCategory.utilities:     return 'Utilities';
-      case TransactionCategory.entertainment: return 'Entertainment';
-      case TransactionCategory.tithe:         return 'Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Freelance';
-      case TransactionCategory.other:         return 'Other';
-      case TransactionCategory.health:        return 'Health';
-      case TransactionCategory.education:     return 'Education';
-      case TransactionCategory.rent:          return 'Rent & Housing';
-      case TransactionCategory.clothing:      return 'Clothing & Shopping';
-      case TransactionCategory.business:      return 'Business';
-      case TransactionCategory.taxes:         return 'Taxes';
-      case TransactionCategory.insurance:     return 'Insurance';
-      case TransactionCategory.subscriptions: return 'Subscriptions';
+      case TransactionCategory.food:          return L10n.t('Food');
+      case TransactionCategory.transport:     return L10n.t('Transport');
+      case TransactionCategory.utilities:     return L10n.t('Utilities');
+      case TransactionCategory.entertainment: return L10n.t('Entertainment');
+      case TransactionCategory.tithe:         return L10n.t('Tithe');
+      case TransactionCategory.salary:        return L10n.t('Salary');
+      case TransactionCategory.freelance:     return L10n.t('Freelance');
+      case TransactionCategory.other:         return L10n.t('Other');
+      case TransactionCategory.health:        return L10n.t('Health');
+      case TransactionCategory.education:     return L10n.t('Education');
+      case TransactionCategory.rent:          return L10n.t('Rent & Housing');
+      case TransactionCategory.clothing:      return L10n.t('Clothing & Shopping');
+      case TransactionCategory.business:      return L10n.t('Business');
+      case TransactionCategory.taxes:         return L10n.t('Taxes');
+      case TransactionCategory.insurance:     return L10n.t('Insurance');
+      case TransactionCategory.subscriptions: return L10n.t('Subscriptions');
     }
   }
 
   /// Mystic-flavoured label — used in the entry form and transaction tiles.
   String get mystiqueLabel {
     switch (this) {
-      case TransactionCategory.food:          return 'Sustenance';
-      case TransactionCategory.transport:     return 'Carriage';
-      case TransactionCategory.utilities:     return 'The Hearth';
-      case TransactionCategory.entertainment: return 'Vices & Joy';
-      case TransactionCategory.tithe:         return 'Tithe';
-      case TransactionCategory.salary:        return 'Salary';
-      case TransactionCategory.freelance:     return 'Grimoire Sales';
-      case TransactionCategory.other:         return 'Miscellany';
-      case TransactionCategory.health:        return 'The Leech';
-      case TransactionCategory.education:     return 'The Scriptorium';
-      case TransactionCategory.rent:          return 'The Hearthstone';
-      case TransactionCategory.clothing:      return 'The Wardrobe';
-      case TransactionCategory.business:      return 'The Merchant Guild';
-      case TransactionCategory.taxes:         return 'The Crown\'s Due';
-      case TransactionCategory.insurance:     return 'The Shield';
-      case TransactionCategory.subscriptions: return 'The Standing Dues';
+      case TransactionCategory.food:          return L10n.t('Sustenance');
+      case TransactionCategory.transport:     return L10n.t('Carriage');
+      case TransactionCategory.utilities:     return L10n.t('The Hearth');
+      case TransactionCategory.entertainment: return L10n.t('Vices & Joy');
+      case TransactionCategory.tithe:         return L10n.t('Tithe');
+      case TransactionCategory.salary:        return L10n.t('Salary');
+      case TransactionCategory.freelance:     return L10n.t('Grimoire Sales');
+      case TransactionCategory.other:         return L10n.t('Miscellany');
+      case TransactionCategory.health:        return L10n.t('The Leech');
+      case TransactionCategory.education:     return L10n.t('The Scriptorium');
+      case TransactionCategory.rent:          return L10n.t('The Hearthstone');
+      case TransactionCategory.clothing:      return L10n.t('The Wardrobe');
+      case TransactionCategory.business:      return L10n.t('The Merchant Guild');
+      case TransactionCategory.taxes:         return L10n.t("The Crown's Due");
+      case TransactionCategory.insurance:     return L10n.t('The Shield');
+      case TransactionCategory.subscriptions: return L10n.t('The Standing Dues');
     }
   }
 
@@ -124,6 +125,16 @@ class Transaction {
   /// amount, so it reduces the balance further.
   final double fee;
 
+  /// Free-form cross-cutting labels (#vacation2026, #reimbursable, …). Filtered
+  /// and searchable in the ledger. Kept lowercase, trimmed, de-duplicated.
+  final List<String> tags;
+
+  /// Multi-category line items for a single payment (e.g. one supermarket
+  /// bill split into Food + Household). When non-empty their amounts sum to
+  /// [amount]; reports allocate the entry across these categories instead of
+  /// [category].
+  final List<TransactionSplit> splits;
+
   const Transaction({
     required this.id,
     required this.title,
@@ -136,6 +147,8 @@ class Transaction {
     this.currency   = Currency.defaultCode,
     this.rateToBase = 1.0,
     this.fee        = 0.0,
+    this.tags       = const [],
+    this.splits     = const [],
   });
 
   /// [amount] expressed in the base currency.
@@ -143,6 +156,9 @@ class Transaction {
 
   /// [fee] expressed in the base currency.
   double get feeInBase => fee * rateToBase;
+
+  /// True when this entry carries split line items.
+  bool get isSplit => splits.isNotEmpty;
 
   // ── Firestore serialisation ──────────────────────────────────────────────
 
@@ -158,6 +174,8 @@ class Transaction {
         'currency':   currency,
         'rateToBase': rateToBase,
         'fee':        fee,
+        'tags':       tags,
+        'splits':     splits.map((s) => s.toMap()).toList(),
       };
 
   factory Transaction.fromMap(Map<String, dynamic> m) => Transaction(
@@ -175,6 +193,13 @@ class Transaction {
         currency:   m['currency'] as String? ?? Currency.defaultCode,
         rateToBase: (m['rateToBase'] as num?)?.toDouble() ?? 1.0,
         fee:        (m['fee'] as num?)?.toDouble() ?? 0.0,
+        // Older documents predate tags and splits.
+        tags:       (m['tags'] as List?)?.cast<String>() ?? const [],
+        splits:     (m['splits'] as List?)
+                ?.map((e) => TransactionSplit.fromMap(
+                    (e as Map).cast<String, dynamic>()))
+                .toList() ??
+            const [],
       );
 
   // ── Display helpers ──────────────────────────────────────────────────────
@@ -182,4 +207,31 @@ class Transaction {
   String get categoryLabel => category.mystiqueLabel;
 
   IconData get categoryIcon => category.icon;
+}
+
+/// One line of a split transaction — a category share of the total payment.
+class TransactionSplit {
+  final TransactionCategory category;
+  final double amount;
+  final String? note;
+
+  const TransactionSplit({
+    required this.category,
+    required this.amount,
+    this.note,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'category': category.name,
+        'amount':   amount,
+        'note':     note,
+      };
+
+  factory TransactionSplit.fromMap(Map<String, dynamic> m) => TransactionSplit(
+        category: TransactionCategory.values.firstWhere(
+            (e) => e.name == m['category'],
+            orElse: () => TransactionCategory.other),
+        amount: (m['amount'] as num).toDouble(),
+        note:   m['note'] as String?,
+      );
 }

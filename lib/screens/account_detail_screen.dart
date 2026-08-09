@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_theme.dart';
+import '../services/l10n.dart';
 import '../widgets/account_edit_sheet.dart';
 import '../widgets/app_feedback.dart';
 import '../services/finance_service.dart';
@@ -23,6 +24,11 @@ class AccountDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: MysticColors.background,
       appBar: AppBar(
@@ -38,7 +44,7 @@ class AccountDetailScreen extends StatelessWidget {
             style: headlineStyle(22, italic: true, weight: FontWeight.w700)),
         actions: [
           IconButton(
-            tooltip: 'Edit account',
+            tooltip: L10n.t('Edit account'),
             icon: const Icon(Icons.more_horiz),
             color: MysticColors.onSurface,
             onPressed: () => showAccountEditSheet(
@@ -93,11 +99,11 @@ class AccountDetailScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: MysticColors.onPrimary.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(account.icon,
-                            color: Colors.white, size: 24),
+                            color: MysticColors.onPrimary, size: 24),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -107,7 +113,7 @@ class AccountDetailScreen extends StatelessWidget {
                             Text(account.typeLabel.toUpperCase(),
                                 style: labelStyle(9,
                                     letterSpacing: 1.5,
-                                    color: Colors.white.withOpacity(0.7))),
+                                    color: MysticColors.onPrimary.withOpacity(0.7))),
                             const SizedBox(height: 4),
                             Text(
                               hidden
@@ -116,7 +122,7 @@ class AccountDetailScreen extends StatelessWidget {
                               style: headlineStyle(30,
                                   italic: false,
                                   weight: FontWeight.w900,
-                                  color: Colors.white),
+                                  color: MysticColors.onPrimary),
                             ),
                           ],
                         ),
@@ -130,7 +136,7 @@ class AccountDetailScreen extends StatelessWidget {
                             hidden
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined,
-                            color: Colors.white.withOpacity(0.8),
+                            color: MysticColors.onPrimary.withOpacity(0.8),
                             size: 20,
                           ),
                         ),
@@ -143,8 +149,8 @@ class AccountDetailScreen extends StatelessWidget {
               if (!account.isActive) ...[
                 const SizedBox(height: 12),
                 Text(
-                  'This account is hidden from the home screen and pickers. '
-                  'Edit it above to restore it.',
+                  L10n.t('This account is hidden from the home screen and pickers. '
+                      'Edit it above to restore it.'),
                   style: bodyStyle(12, color: MysticColors.tertiary)
                       .copyWith(fontStyle: FontStyle.italic),
                 ),
@@ -152,13 +158,14 @@ class AccountDetailScreen extends StatelessWidget {
 
               const SizedBox(height: 28),
               _SectionHeader(
-                title: 'TRANSACTIONS',
+                title: L10n.t('TRANSACTIONS'),
                 count: txns.length,
                 color: MysticColors.primary,
               ),
               const SizedBox(height: 12),
               if (txns.isEmpty)
-                _EmptyRow(message: 'No entries recorded against this vault.')
+                _EmptyRow(
+                    message: L10n.t('No entries recorded against this vault.'))
               else
                 Container(
                   decoration: BoxDecoration(
@@ -186,21 +193,21 @@ class AccountDetailScreen extends StatelessWidget {
                           context: context,
                           builder: (_) => AlertDialog(
                             backgroundColor: MysticColors.surfaceContainerLow,
-                            title: Text('Delete entry?',
+                            title: Text(L10n.t('Delete entry?'),
                                 style: headlineStyle(18,
                                     italic: true, weight: FontWeight.w700)),
-                            content: Text('Remove "${t.title}"?',
+                            content: Text('${L10n.t('Remove')} "${t.title}"?',
                                 style: bodyStyle(14)),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context, false),
-                                child: Text('Cancel',
+                                child: Text(L10n.t('Cancel'),
                                     style: bodyStyle(14,
                                         color: MysticColors.onSurfaceVariant)),
                               ),
                               TextButton(
                                 onPressed: () => Navigator.pop(context, true),
-                                child: Text('Delete',
+                                child: Text(L10n.t('Delete'),
                                     style: bodyStyle(14,
                                         weight: FontWeight.w700,
                                         color: MysticColors.tertiary)),
@@ -214,8 +221,8 @@ class AccountDetailScreen extends StatelessWidget {
                         child: _EntryRow(
                           title: t.title,
                           subtitle:
-                              '${DateFormat('MMM d, yyyy · h:mm a').format(t.date)}'
-                              '${t.fee > 0 ? ' · fee ${fmt.format(t.fee)}' : ''}'
+                              '${DateFormat('MMM d, yyyy · h:mm a', L10n.instance.isAmharic ? 'am' : null).format(t.date)}'
+                              '${t.fee > 0 ? ' · ${L10n.t('fee')} ${fmt.format(t.fee)}' : ''}'
                               '${t.note != null && t.note!.isNotEmpty ? ' · ${t.note}' : ''}',
                           amount: t.amount,
                           currency: t.currency,
@@ -232,13 +239,14 @@ class AccountDetailScreen extends StatelessWidget {
 
               const SizedBox(height: 28),
               _SectionHeader(
-                title: 'TRANSFERS',
+                title: L10n.t('TRANSFERS'),
                 count: transfers.length,
                 color: MysticColors.secondary,
               ),
               const SizedBox(height: 12),
               if (transfers.isEmpty)
-                _EmptyRow(message: 'No money moved in or out of this vault.')
+                _EmptyRow(
+                    message: L10n.t('No money moved in or out of this vault.'))
               else
                 Container(
                   decoration: BoxDecoration(
@@ -258,10 +266,12 @@ class AccountDetailScreen extends StatelessWidget {
                       final cur = isIn ? t.toCurrency : t.currency;
 
                       return _EntryRow(
-                        title: isIn ? 'Received from $other' : 'Sent to $other',
+                        title: isIn
+                            ? '${L10n.t('Received from')} $other'
+                            : '${L10n.t('Sent to')} $other',
                         subtitle:
-                            '${DateFormat('MMM d, yyyy · h:mm a').format(t.date)}'
-                            '${t.fee > 0 ? ' · fee ${fmt.format(t.fee)}' : ''}'
+                            '${DateFormat('MMM d, yyyy · h:mm a', L10n.instance.isAmharic ? 'am' : null).format(t.date)}'
+                            '${t.fee > 0 ? ' · ${L10n.t('fee')} ${fmt.format(t.fee)}' : ''}'
                             '${t.note != null && t.note!.isNotEmpty ? ' · ${t.note}' : ''}',
                         amount: amount,
                         currency: cur,

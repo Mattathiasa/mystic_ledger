@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/lock_service.dart';
+import '../services/l10n.dart';
 import '../widgets/app_theme.dart';
 
 /// Full-screen gate shown while the app is locked.
@@ -39,8 +40,8 @@ class _LockScreenState extends State<LockScreen> {
     setState(() => _busy = false);
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Not recognised — try again.',
-            style: bodyStyle(13, color: Colors.white)),
+        content: Text(L10n.t('Not recognised — try again.'),
+            style: bodyStyle(13, color: MysticColors.onTertiary)),
         backgroundColor: MysticColors.tertiary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -50,6 +51,11 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild when dark mode or the language flips: the palette and strings
+    // live in mutable statics, so const widget instances would skip us.
+    Theme.of(context);
+    Localizations.localeOf(context);
+
     return Scaffold(
       backgroundColor: const Color(0xFF292520),
       body: SafeArea(
@@ -73,14 +79,14 @@ class _LockScreenState extends State<LockScreen> {
                       color: MysticColors.primaryContainer, size: 40),
                 ),
                 const SizedBox(height: 24),
-                Text('Sealed',
+                Text(L10n.t('Sealed'),
                     style: headlineStyle(34,
                         italic: true,
                         weight: FontWeight.w900,
                         color: Colors.white)),
                 const SizedBox(height: 8),
                 Text(
-                  'Your ledger is locked. Unlock to read the records.',
+                  L10n.t('Your ledger is locked. Unlock to read the records.'),
                   textAlign: TextAlign.center,
                   style: bodyStyle(14, color: Colors.white.withOpacity(0.6)),
                 ),
@@ -116,7 +122,7 @@ class _LockScreenState extends State<LockScreen> {
                               const Icon(Icons.fingerprint,
                                   color: Color(0xFF292520), size: 22),
                               const SizedBox(width: 10),
-                              Text('UNLOCK',
+                              Text(L10n.t('UNLOCK'),
                                   style: labelStyle(11,
                                       letterSpacing: 1.5,
                                       color: const Color(0xFF292520),
@@ -129,8 +135,9 @@ class _LockScreenState extends State<LockScreen> {
                 const SizedBox(height: 16),
                 if (_canUse == false) ...[
                   Text(
-                    'No fingerprint or PIN is enrolled on this device, so '
-                    'nothing can verify you. You can proceed without the lock.',
+                    L10n.t('No fingerprint or PIN is enrolled on this device, '
+                        'so nothing can verify you. You can proceed without '
+                        'the lock.'),
                     textAlign: TextAlign.center,
                     style: bodyStyle(12,
                         color: Colors.white.withOpacity(0.5)),
@@ -141,7 +148,7 @@ class _LockScreenState extends State<LockScreen> {
                       LockService.instance.unlock();
                       LockService.instance.setEnabled(false);
                     },
-                    child: Text('Turn off the lock',
+                    child: Text(L10n.t('Turn off the lock'),
                         style: bodyStyle(13,
                             color: MysticColors.primaryContainer)),
                   ),

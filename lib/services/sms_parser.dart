@@ -1,4 +1,4 @@
-// SMS parsing for captured bank alerts (Telebirr + CBE).
+// SMS parsing for captured bank alerts (Telebirr + CBE + Awash).
 //
 // Regexes here are tuned against real messages the owner forwarded (see
 // test/sms_parser_test.dart). Wording varies by language and release, so
@@ -21,6 +21,7 @@ enum CapturedDirection { income, expense, unknown }
 enum CapturedBank {
   telebirr,
   cbe,
+  awash,
   /// A recurring-schedule proposal — not an SMS at all, but the review queue
   /// presents it through the same banner and RECORD flow.
   recurring;
@@ -28,6 +29,7 @@ enum CapturedBank {
   String get label => switch (this) {
         CapturedBank.telebirr => 'Telebirr',
         CapturedBank.cbe => 'CBE',
+        CapturedBank.awash => 'Awash Bank',
         CapturedBank.recurring => 'Recurring',
       };
 }
@@ -143,9 +145,22 @@ CapturedBank? detectBank({required String sender, required String body}) {
   final s = sender.toLowerCase();
   final b = body.toLowerCase();
 
+  // The sender is the strongest signal, and it settles any body overlap: a
+  // CBE alert can say "transferred to Awash Bank account ..." without being
+  // an Awash alert.
+  if (s.contains('awash')) return CapturedBank.awash;
   if (s.contains('telebirr')) return CapturedBank.telebirr;
   if (s.contains('cbe')) return CapturedBank.cbe;
 
+  // Body fingerprints. Awash first: its *send* alerts carry the word
+  // "Telebirr" ("Telebirr Transfer of 300.00 ETB to ...") but are Awash Pay
+  // transactions, so only the distinctive markers disambiguate.
+  if (b.contains('awash bank') ||
+      b.contains('awashpay') ||
+      b.contains('awashbank') ||
+      b.contains('t.me/awash_bank')) {
+    return CapturedBank.awash;
+  }
   if (b.contains('ተለቢር') || // Telebirr in Amharic
       b.contains('telebir') ||
       b.contains('ethio telecom') ||
@@ -174,7 +189,21 @@ String smsSignature({
   required String body,
 }) {
   if (id != null && id.isNotEmpty) return 'id:$id';
-  return 'sig:${Object.hashAll([sender, body]).toRadixString(16)}';
+  return 'sig:${_fnv1a('$sender\u0000$body').toRadixString(16)}';
+}
+
+/// Stable FNV-1a hash over [s].
+///
+/// Unlike `Object.hashAll`, the result never changes between app launches, so
+/// the dedup set persisted in SharedPreferences keeps matching across
+/// restarts — otherwise the same SMS could be queued again after every relaunch.
+int _fnv1a(String s) {
+  var h = 0x811c9dc5;
+  for (final c in s.codeUnits) {
+    h ^= c;
+    h = (h * 0x01000193) & 0xFFFFFFFF;
+  }
+  return h;
 }
 
 /// Parses [body] for the given [bank]. Never throws and never returns null —
@@ -183,6 +212,7 @@ String smsSignature({
 SmsParseResult parseSms(CapturedBank bank, String body) => switch (bank) {
       CapturedBank.telebirr => _parseTelebirr(body),
       CapturedBank.cbe => _parseCbe(body),
+      CapturedBank.awash => _parseAwash(body),
       // Recurring proposals are built directly (see SmsCaptureStore); they are
       // never parsed from text, but the switch must still be exhaustive.
       CapturedBank.recurring => const SmsParseResult(
@@ -410,4 +440,89 @@ double? _cbeFee(String body, double? amount) {
     return total - amount;
   }
   return _firstMatchDouble(body, _cbeServiceChargeRe);
+}
+
+// ── Awash Bank ────────────────────────────────────────────────────────────────
+//
+// Send: "Dear Customer; Telebirr Transfer of 300.00 ETB to Nehimya Kibakidus
+//  Jemaneh  - 251993933119 from 013490536312900/BANK,  Reason- Ertip, Charge
+//  5.00 VAT: 0.75 EDRRF 0.25 ETB. Your Balance is  ETB 3,009.85 . Receipt
+//  Link: https://awashpay.awashbank.com:8225/-2KG5MVUP5A-5I5U1F. ..."
+// Receive: "Dear Customer, your Account 01349xxxxxx2900 has been Credited
+//  with ETB 1700.00 on 2026-08-05 09:25:51 by NEHIMYA KIBAKIDUS JEMANEH. Your
+//  balance now is ETB 3315.85. ... Awash Bank."
+
+final _awashChargeRe = RegExp(
+    r'charge\s*([\d,]+(?:\.\d{1,2})?)', caseSensitive: false);
+final _awashVatRe = RegExp(
+    r'vat[:\s]*([\d,]+(?:\.\d{1,2})?)', caseSensitive: false);
+final _awashEdrrfRe = RegExp(
+    r'edrrf\s*([\d,]+(?:\.\d{1,2})?)', caseSensitive: false);
+final _awashRefRe =
+    RegExp(r'awashpay\.awashbank\.com:\d+/([A-Za-z0-9-]+)');
+/// "by NEHIMYA KIBAKIDUS JEMANEH." — the name ends at a period, comma, or a
+/// sentence break (unlike CBE's "by ... with", Awash prints just a period).
+final _awashByRe = RegExp(
+    r'\bby\s+([A-Za-z][A-Za-z0-9\s.]{2,40}?)\s*(?:\.|!|,|Your|balance|Total)',
+    caseSensitive: false);
+
+SmsParseResult _parseAwash(String body) {
+  final amount = _firstAmount(body);
+  final direction = _detectAwashDirection(body);
+  return SmsParseResult(
+    amount: amount,
+    direction: direction,
+    counterparty: _extractAwashCounterparty(body),
+    // Awash prints every charge separately (Charge + VAT + EDRRF) — the true
+    // cost of the transfer is their sum.
+    fee: _awashFee(body),
+    reference: _firstMatch(body, _awashRefRe),
+    confidence: _confidenceFor(amount, direction),
+  );
+}
+
+CapturedDirection _detectAwashDirection(String body) {
+  final lower = body.toLowerCase();
+  if (lower.contains('credited') || lower.contains('deposited')) {
+    return CapturedDirection.income;
+  }
+  if (lower.contains('debited') || lower.contains('withdrawn')) {
+    return CapturedDirection.expense;
+  }
+  if (lower.contains('transfer') ||
+      lower.contains('sent') ||
+      lower.contains('paid')) {
+    return CapturedDirection.expense;
+  }
+  return CapturedDirection.unknown;
+}
+
+String? _extractAwashCounterparty(String body) {
+  // Send: "to Nehimya Kibakidus Jemaneh  - 251993933119 from ..." — take the
+  // text after 'to' and cut it at the 'from' clause, a trailing " - phone",
+  // or a bare phone number.
+  final toIdx = body.toLowerCase().indexOf(' to ');
+  if (toIdx != -1) {
+    final fromIdx = body.toLowerCase().indexOf(' from ', toIdx);
+    final end = fromIdx != -1 ? fromIdx : body.length;
+    var raw = body.substring(toIdx + 4, end).trim();
+    final dash = raw.indexOf(' - ');
+    if (dash != -1) raw = raw.substring(0, dash).trim();
+    final phone = _fullPhoneRe.firstMatch(raw);
+    if (phone != null && phone.start > 0) {
+      raw = raw.substring(0, phone.start).trim();
+    }
+    if (raw.isNotEmpty && raw.length <= 60) return raw;
+  }
+
+  // Receive: "... by NEHIMYA KIBAKIDUS JEMANEH. Your balance now is ..."
+  return _firstMatch(body, _awashByRe) ?? _firstMatch(body, _cbeByRe);
+}
+
+double? _awashFee(String body) {
+  final charge = _firstMatchDouble(body, _awashChargeRe) ?? 0;
+  final vat = _firstMatchDouble(body, _awashVatRe) ?? 0;
+  final edrrf = _firstMatchDouble(body, _awashEdrrfRe) ?? 0;
+  final total = charge + vat + edrrf;
+  return total > 0 ? total : null;
 }

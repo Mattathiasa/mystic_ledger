@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/l10n.dart';
 import 'currency_model.dart';
 
 enum AccountType { bank, mobile, cash, savings }
@@ -53,10 +54,10 @@ class Account {
 
   String get typeLabel {
     switch (type) {
-      case AccountType.bank:    return 'Bank';
-      case AccountType.mobile:  return 'Mobile Money';
-      case AccountType.cash:    return 'Cash';
-      case AccountType.savings: return 'Savings Vault';
+      case AccountType.bank:    return L10n.t('Bank');
+      case AccountType.mobile:  return L10n.t('Mobile Money');
+      case AccountType.cash:    return L10n.t('Cash');
+      case AccountType.savings: return L10n.t('Savings Vault');
     }
   }
 
