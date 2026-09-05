@@ -1,16 +1,22 @@
-# mystic_ledger
+# Mystic Ledger
 
-A new Flutter project.
+A personal finance app for Ethiopian users, styled as a vintage
+"Archivist's Grimoire" (parchment surfaces, gold/green/oxblood palette,
+slightly rotated cards, ornate copy). Multi-currency accounts,
+income/expense tracking, transfers between accounts, debts, budgets,
+savings vaults, tithe ("Sacred Giving"), recurring schedules, and SMS
+auto-capture of bank alerts (Telebirr, CBE, Awash).
 
-## Getting Started
+**Stack:** Flutter (Dart ≥3.3.4) · Provider (state) · Firebase Auth +
+Cloud Firestore (offline-first) · `fl_chart` · `google_fonts` · English ⇄
+Amharic localization · dark mode · biometric app-lock · encrypted
+(AES-256-GCM) backup/restore · CSV import/export.
 
-This project is a starting point for a Flutter application.
+## Docs
+See [`AUDIT.md`](./AUDIT.md) for the full architecture reference (boot
+sequence, services, analyzer state) — keep it updated whenever
+architecture, models, or services change.
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Status
+This README replaces the Flutter starter boilerplate; content pulled from
+`AUDIT.md` (last verified 2026-08-08 there).
